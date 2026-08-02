@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "IBKR Analytics Studio",
+  "version": "2.1.8",
+  "identifier": "com.g061206.ibkranalyticsstudio",
+  "build": {
+    "beforeDevCommand": "npm run serve",
+    "beforeBuildCommand": "npm run build:tauri-dist",
+    "devUrl": "http://127.0.0.1:4187",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "IBKR Analytics Studio",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app"
+    ],
+    "icon": [
+      "icons/icon.icns"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
+  }
+}

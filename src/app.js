@@ -167,9 +167,9 @@ const copy = {
 
 const CJK_UI_PATTERN = /[\u3400-\u9fff]/;
 const ENGLISH_UI_REPLACEMENTS = [
-  ["主推通过 Windows WebView2 壳自动拉取 Activity Flex Query，不需要手动下载 CSV。", "The Windows WebView2 app can fetch the Activity Flex Query automatically, so you do not need to download CSV files manually."],
-  ["Token 和 Query ID 只保存在本机 WebView2 localStorage，并只发送到 IBKR Flex Web Service。", "Token and Query ID are saved only in local WebView2 localStorage and sent only to IBKR Flex Web Service."],
-  ["Flex API 自动拉取仅在 WebView2 桌面应用中可用。", "Automatic Flex API fetching is available only in the WebView2 desktop app."],
+  ["桌面 App 可自动拉取 Activity Flex Query，不需要手动下载 CSV。", "The desktop app can fetch the Activity Flex Query automatically, so you do not need to download CSV files manually."],
+  ["Token 和 Query ID 只保存在本机 App localStorage，并只发送到 IBKR Flex Web Service。", "Token and Query ID are saved only in local app localStorage and sent only to IBKR Flex Web Service."],
+  ["Flex API 自动拉取仅在桌面 App 中可用。", "Automatic Flex API fetching is available only in the desktop app."],
   ["当前 Flex 报表没有逐日 TWR，无法画出剔除入金影响的收益率曲线。请在 Activity Flex Query 的 Change in NAV 中打开 Breakout by Day，然后重新拉取。", "The current Flex report does not include daily TWR, so the flow-adjusted return curve cannot be drawn. Enable Breakout by Day in Change in NAV for the Activity Flex Query, then fetch the report again."],
   ["按 IBKR 每日 TWR 累乘计算，已剔除入金、出金等外部现金流影响。", "Calculated from compounded daily IBKR TWR, excluding deposits, withdrawals, and other external cash flows."],
   ["数据结构正常", "Data structure looks good"],
@@ -339,6 +339,20 @@ let shareLogoImagePromise = null;
 let flexCacheDbPromise = null;
 let benchmarkRequestId = 0;
 
+function normalizeFlexToken(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^current\s+token\s*/i, "")
+    .replace(/^token\s*[:：]?\s*/i, "")
+    .replace(/\s+/g, "");
+}
+
+function normalizeFlexQueryId(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/\d{3,}/);
+  return match ? match[0] : text;
+}
+
 const state = {
   data: null,
   activeTab: "performance",
@@ -346,8 +360,8 @@ const state = {
   search: "",
   sourceName: "",
   dailyMonth: "",
-  flexToken: localStorage.getItem(FLEX_TOKEN_STORAGE_KEY) || "",
-  flexQueryId: localStorage.getItem(FLEX_QUERY_ID_STORAGE_KEY) || "",
+  flexToken: normalizeFlexToken(localStorage.getItem(FLEX_TOKEN_STORAGE_KEY)),
+  flexQueryId: normalizeFlexQueryId(localStorage.getItem(FLEX_QUERY_ID_STORAGE_KEY)),
   flexStatus: "",
   flexBusy: false,
   cacheStatus: "",
@@ -391,7 +405,7 @@ function renderUpload() {
         <div class="top-nav-inner">
           ${renderBrand("IBKR Analytics Studio", t("activityStatement"))}
           <div class="top-actions">
-            <button class="secondary-button update-check-button" id="updateCheckButton" type="button">${icon("download")}${updateButtonLabel()}</button>
+            ${renderUpdateCheckButton("updateCheckButton")}
             ${renderLanguageSwitch()}
             <button class="icon-button" id="themeToggle" type="button" title="${t("switchTheme")}" aria-label="${t("switchTheme")}">${icon(state.theme === "dark" ? "sun" : "moon")}</button>
           </div>
@@ -419,7 +433,7 @@ function renderUpload() {
                 <h3>${icon("database")}IBKR Flex API</h3>
                 <span class="pill positive">${t("flexRecommended")}</span>
               </div>
-              <p class="card-kicker">主推通过 Windows WebView2 壳自动拉取 Activity Flex Query，不需要手动下载 CSV。</p>
+              <p class="card-kicker">桌面 App 可自动拉取 Activity Flex Query，不需要手动下载 CSV。</p>
               <div class="flex-form">
                 <label>
                   <span>Flex Web Service Token</span>
@@ -433,7 +447,7 @@ function renderUpload() {
                   <button class="primary-button" id="flexFetchButton" type="button" ${canUseNativeFlex() && !state.flexBusy ? "" : "disabled"}>${icon("download")}${state.flexBusy ? "Fetching..." : "Fetch report"}</button>
                   <button class="secondary-button" id="flexForgetButton" type="button" ${state.flexToken || state.flexQueryId ? "" : "disabled"}>${icon("reset")}Forget saved</button>
                 </div>
-                <p class="flex-status">${escapeHtml(state.flexStatus || (canUseNativeFlex() ? "Token 和 Query ID 只保存在本机 WebView2 localStorage，并只发送到 IBKR Flex Web Service。" : "Flex API 自动拉取仅在 WebView2 桌面应用中可用。"))}</p>
+                <p class="flex-status">${escapeHtml(state.flexStatus || (canUseNativeFlex() ? "Token 和 Query ID 只保存在本机 App localStorage，并只发送到 IBKR Flex Web Service。" : "Flex API 自动拉取仅在桌面 App 中可用。"))}</p>
               </div>
             </section>
             <label class="dropzone" id="dropzone" for="fileInput">
@@ -697,7 +711,7 @@ function renderDashboard() {
               ${icon("search")}
               <input class="search-input" id="globalSearch" type="search" value="${escapeAttribute(state.search)}" placeholder="${t("searchPlaceholder")}" />
             </label>
-            <button class="secondary-button update-check-button" id="dashboardUpdateCheckButton" type="button">${icon("download")}${updateButtonLabel()}</button>
+            ${renderUpdateCheckButton("dashboardUpdateCheckButton")}
             ${renderLanguageSwitch()}
             <button class="icon-button" id="themeToggle" type="button" title="${t("switchTheme")}" aria-label="${t("switchTheme")}">${icon(state.theme === "dark" ? "sun" : "moon")}</button>
           </div>
@@ -762,7 +776,7 @@ function renderFlexSyncStatus() {
 }
 
 function renderUpdateNotice() {
-  if (!canUseNativeFlex()) return "";
+  if (!canUseNativeUpdate()) return "";
   if (state.updateBusy && state.updateStatus === "manual") {
     return `<section class="update-banner"><div>${icon("download")}<span>${escapeHtml(updateText("checking"))}</span></div></section>`;
   }
@@ -784,6 +798,11 @@ function renderUpdateNotice() {
     return `<section class="update-banner is-warning"><div>${icon("help")}<span>${escapeHtml(updateText("failed"))}</span></div></section>`;
   }
   return "";
+}
+
+function renderUpdateCheckButton(id) {
+  if (!canUseNativeUpdate()) return "";
+  return `<button class="secondary-button update-check-button" id="${id}" type="button">${icon("download")}${updateButtonLabel()}</button>`;
 }
 
 function updateButtonLabel() {
@@ -1860,18 +1879,20 @@ function bindUploadEvents() {
   });
 
   flexTokenInput?.addEventListener("input", (event) => {
-    state.flexToken = event.currentTarget.value || "";
+    state.flexToken = normalizeFlexToken(event.currentTarget.value);
     saveFlexCredentials();
   });
 
   flexQueryInput?.addEventListener("input", (event) => {
-    state.flexQueryId = event.currentTarget.value || "";
+    state.flexQueryId = normalizeFlexQueryId(event.currentTarget.value);
     saveFlexCredentials();
   });
 
   flexFetchButton?.addEventListener("click", () => {
-    state.flexToken = flexTokenInput?.value || "";
-    state.flexQueryId = flexQueryInput?.value || "";
+    state.flexToken = normalizeFlexToken(flexTokenInput?.value);
+    state.flexQueryId = normalizeFlexQueryId(flexQueryInput?.value);
+    if (flexTokenInput) flexTokenInput.value = state.flexToken;
+    if (flexQueryInput) flexQueryInput.value = state.flexQueryId;
     saveFlexCredentials();
     fetchFlexReport();
   });
@@ -2028,12 +2049,28 @@ function localizeUiString(value) {
     .replace(/\s*·\s*/g, " · ");
 }
 
-function canUseNativeFlex() {
+function getTauriInvoke() {
+  return window.__TAURI__?.core?.invoke || null;
+}
+
+function canUseTauriBridge() {
+  return typeof getTauriInvoke() === "function";
+}
+
+function canUseWebView2Bridge() {
   return Boolean(window.chrome?.webview);
 }
 
+function canUseNativeFlex() {
+  return canUseWebView2Bridge() || canUseTauriBridge();
+}
+
+function canUseNativeUpdate() {
+  return canUseWebView2Bridge();
+}
+
 function maybeAutoCheckForUpdates() {
-  if (!canUseNativeFlex()) return;
+  if (!canUseNativeUpdate()) return;
 
   const lastCheckedAt = Number(localStorage.getItem(UPDATE_CHECK_STORAGE_KEY) || "0");
   const oneDay = 24 * 60 * 60 * 1000;
@@ -2043,7 +2080,7 @@ function maybeAutoCheckForUpdates() {
 }
 
 function checkForUpdates({ manual = false } = {}) {
-  if (!canUseNativeFlex()) {
+  if (!canUseNativeUpdate()) {
     state.updateStatus = "error";
     state.updateError = "Update checks are available only in the WebView2 desktop app.";
     render();
@@ -2098,7 +2135,7 @@ function openUpdateDownload() {
   const url = state.updateInfo?.downloadUrl || state.updateInfo?.releaseUrl;
   if (!url) return;
 
-  if (!canUseNativeFlex()) {
+  if (!canUseWebView2Bridge()) {
     window.open(url, "_blank", "noopener,noreferrer");
     return;
   }
@@ -2120,6 +2157,7 @@ async function hydrateCachedFlexReport() {
 
   const parsed = parseText(cached.text, cached.sourceName || "cached-flex-report.csv", {
     preserveView: false,
+    defaultTab: "daily",
     cacheStatus: `已载入本机缓存 ${formatDateTime(cached.fetchedAt)}`
   });
 
@@ -2200,14 +2238,19 @@ async function clearCachedFlexReport() {
 }
 
 function saveFlexCredentials() {
-  if (state.flexToken) {
-    localStorage.setItem(FLEX_TOKEN_STORAGE_KEY, state.flexToken);
+  const flexToken = normalizeFlexToken(state.flexToken);
+  const flexQueryId = normalizeFlexQueryId(state.flexQueryId);
+  state.flexToken = flexToken;
+  state.flexQueryId = flexQueryId;
+
+  if (flexToken) {
+    localStorage.setItem(FLEX_TOKEN_STORAGE_KEY, flexToken);
   } else {
     localStorage.removeItem(FLEX_TOKEN_STORAGE_KEY);
   }
 
-  if (state.flexQueryId) {
-    localStorage.setItem(FLEX_QUERY_ID_STORAGE_KEY, state.flexQueryId);
+  if (flexQueryId) {
+    localStorage.setItem(FLEX_QUERY_ID_STORAGE_KEY, flexQueryId);
   } else {
     localStorage.removeItem(FLEX_QUERY_ID_STORAGE_KEY);
   }
@@ -2225,10 +2268,13 @@ function fetchFlexReport() {
 
 function requestFlexReport({ background = false } = {}) {
   if (!canUseNativeFlex()) {
-    state.flexStatus = "IBKR Flex API is available only in the WebView2 desktop app.";
+    state.flexStatus = "IBKR Flex API is available only in the desktop app.";
     if (!background) renderUpload();
     return;
   }
+
+  state.flexToken = normalizeFlexToken(state.flexToken);
+  state.flexQueryId = normalizeFlexQueryId(state.flexQueryId);
 
   if (!state.flexToken.trim() || !state.flexQueryId.trim()) {
     state.flexStatus = "Enter both Flex Web Service Token and Query ID.";
@@ -2247,11 +2293,9 @@ function requestFlexReport({ background = false } = {}) {
     renderUpload();
   }
 
-  const handleMessage = async (event) => {
-    const message = event.data || {};
+  const handleFlexResult = async (message) => {
     if (message.type !== "flex.result" || message.requestId !== requestId) return;
 
-    window.chrome.webview.removeEventListener("message", handleMessage);
     state.flexBusy = false;
     state.backgroundRefreshBusy = false;
 
@@ -2294,6 +2338,7 @@ function requestFlexReport({ background = false } = {}) {
     state.flexStatus = "IBKR Flex report downloaded. Parsing...";
     const parsed = parseText(reportText, sourceName, {
       preserveView: background,
+      defaultTab: "daily",
       keepExistingOnError: background,
       cacheStatus: background ? `报表已更新 ${formatDateTime(fetchedAt)}` : `已缓存 ${formatDateTime(fetchedAt)}`
     });
@@ -2307,6 +2352,34 @@ function requestFlexReport({ background = false } = {}) {
         referenceCode: message.referenceCode || ""
       });
     }
+  };
+
+  if (canUseTauriBridge()) {
+    getTauriInvoke()("flex_fetch", {
+      token: state.flexToken.trim(),
+      queryId: state.flexQueryId.trim()
+    }).then((result) => handleFlexResult({
+      type: "flex.result",
+      requestId,
+      ok: true,
+      reportText: result?.reportText || "",
+      contentType: result?.contentType || "text/plain",
+      referenceCode: result?.referenceCode || ""
+    })).catch((error) => handleFlexResult({
+      type: "flex.result",
+      requestId,
+      ok: false,
+      error: String(error)
+    }));
+    return;
+  }
+
+  const handleMessage = async (event) => {
+    const message = event.data || {};
+    if (message.type !== "flex.result" || message.requestId !== requestId) return;
+
+    window.chrome.webview.removeEventListener("message", handleMessage);
+    await handleFlexResult(message);
   };
 
   window.chrome.webview.addEventListener("message", handleMessage);
@@ -2384,7 +2457,7 @@ function parseText(text, sourceName, options = {}) {
     state.sourceName = sourceName || "";
     state.search = options.preserveView ? previousSearch : "";
     state.error = "";
-    state.activeTab = options.preserveView ? previousActiveTab : "performance";
+    state.activeTab = options.preserveView ? previousActiveTab : options.defaultTab || "performance";
     if (options.cacheStatus) state.cacheStatus = options.cacheStatus;
     state.shareOpen = options.preserveView
       ? previousShareOpen

@@ -6,6 +6,13 @@
   "type": "module",
   "scripts": {
     "check": "node --check src/encoding.js && node --check src/parser.js && node --check src/reportLanguage.js && node --check src/app.js",
-    "serve": "node serve.mjs"
+    "serve": "node serve.mjs",
+    "build:tauri-dist": "node scripts/build-tauri-dist.mjs",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:dmg": "npm run tauri:build && bash scripts/build-macos-dmg.sh"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
   }
 }

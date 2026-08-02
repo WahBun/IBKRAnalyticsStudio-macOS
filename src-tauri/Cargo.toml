@@ -1,0 +1,21 @@
+[package]
+name = "ibkr-analytics-studio"
+version = "2.1.8"
+description = "Local-first Interactive Brokers Activity Statement analytics app"
+authors = ["G061206"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "ibkr_analytics_studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["charset", "rustls-tls", "socks"] }
+roxmltree = "0.20"
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["time"] }

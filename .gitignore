@@ -7,6 +7,12 @@ stitch-reference/chrome-lang-profile/
 windows/**/bin/
 windows/**/obj/
 windows/**/publish/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/icons/*
+!src-tauri/icons/
+!src-tauri/icons/icon.icns
+src-tauri/icons/*.iconset/
 *.user
 .DS_Store
 Thumbs.db
