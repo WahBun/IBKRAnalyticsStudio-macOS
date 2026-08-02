@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.1.8";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.8";
-import { parseIbkrReport } from "./parser.js?v=2.1.8";
+import { decodeReportFile } from "./encoding.js?v=2.1.9";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.9";
+import { parseIbkrReport } from "./parser.js?v=2.1.9";
 
 const app = document.querySelector("#app");
 
@@ -54,6 +54,7 @@ const copy = {
     shareImage: "生成分享图",
     replaceFile: "更换文件",
     searchPlaceholder: "搜索代码或标签...",
+    clearSearch: "清空搜索",
     baseCurrency: "基础货币",
     account: "账户",
     unknownAccount: "未识别账户",
@@ -129,6 +130,7 @@ const copy = {
     shareImage: "Share image",
     replaceFile: "Replace file",
     searchPlaceholder: "Search symbols or tags...",
+    clearSearch: "Clear search",
     baseCurrency: "Base currency",
     account: "Account",
     unknownAccount: "Unknown account",
@@ -249,6 +251,7 @@ const ENGLISH_UI_REPLACEMENTS = [
   ["暂无持仓市值数据。", "No position market value data."],
   ["暂无逐日交易数据。", "No daily trade data."],
   ["当前月份没有交易记录。", "No trades in the selected month."],
+  ["当前搜索没有匹配的交易记录。", "No matching trades for the current search."],
   ["成交时间", "Execution time"],
   ["股票代码", "Symbol"],
   ["成交价", "Price"],
@@ -321,7 +324,7 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.8";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.9";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#3186f6", "#0b6b5d", "#b57936", "#7c6ee6", "#d85d5d", "#2aa6a1"];
 const POSITION_PIE_COLORS = ["#3186f6", "#0b6b5d", "#b57936", "#7c6ee6", "#d85d5d", "#2aa6a1", "#69a64d", "#bd6aa8"];
@@ -332,7 +335,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const SP500_BENCHMARK_URL = "https://sp500-proxy.3368517784.workers.dev";
-const APP_VERSION = "2.1.8";
+const APP_VERSION = "2.1.9";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -710,6 +713,7 @@ function renderDashboard() {
             <label class="search-wrap">
               ${icon("search")}
               <input class="search-input" id="globalSearch" type="search" value="${escapeAttribute(state.search)}" placeholder="${t("searchPlaceholder")}" />
+              ${state.search ? `<button class="search-clear-button" id="globalSearchClear" type="button" title="${t("clearSearch")}" aria-label="${t("clearSearch")}">${icon("close")}</button>` : ""}
             </label>
             ${renderUpdateCheckButton("dashboardUpdateCheckButton")}
             ${renderLanguageSwitch()}
@@ -836,7 +840,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.1.8" alt="" />
+        <img src="./assets/app-logo.png?v=2.1.9" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1007,10 +1011,21 @@ function renderPerformance(data) {
 function renderDailyStats(data) {
   const currency = data.baseCurrency || "USD";
   const rows = data.dailyTradeStats || [];
-  const months = Array.from(new Set(rows.map((row) => row.month))).sort();
+  const allTradeRows = data.tradeDetails || [];
+  const isFiltered = Boolean(state.search.trim());
+  const visibleTradeRows = isFiltered ? allTradeRows.filter((row) => dailyTradeSearchMatch(row)) : allTradeRows;
+  const visibleRows = isFiltered ? summarizeDailyTradeRows(visibleTradeRows) : rows;
+  const allMonths = Array.from(new Set(rows.map((row) => row.month))).sort();
+  const visibleMonths = Array.from(new Set(visibleRows.map((row) => row.month))).sort();
+  const months = isFiltered && visibleMonths.length ? visibleMonths : allMonths;
   const selectedMonth = months.includes(state.dailyMonth) ? state.dailyMonth : months.at(-1) || "";
-  const monthRows = selectedMonth ? rows.filter((row) => row.month === selectedMonth) : [];
-  const tradeRows = selectedMonth ? (data.tradeDetails || []).filter((row) => row.month === selectedMonth) : [];
+  const monthRows = selectedMonth ? visibleRows.filter((row) => row.month === selectedMonth) : [];
+  const tradeRows = selectedMonth ? visibleTradeRows.filter((row) => row.month === selectedMonth) : [];
+  const unfilteredTradeRows = selectedMonth ? allTradeRows.filter((row) => row.month === selectedMonth) : [];
+  const rowCountLabel = isFiltered
+    ? `${formatNumber(tradeRows.length)} / ${formatNumber(unfilteredTradeRows.length)} rows`
+    : `${formatNumber(tradeRows.length)} rows`;
+  const emptyTradeMessage = isFiltered ? "当前搜索没有匹配的交易记录。" : "当前月份没有交易记录。";
   const totalTrades = monthRows.reduce((sum, row) => sum + row.tradeCount, 0);
   const totalGross = monthRows.reduce((sum, row) => sum + row.grossTradeValue, 0);
   const totalRealized = monthRows.reduce((sum, row) => sum + row.realizedPL, 0);
@@ -1044,8 +1059,8 @@ function renderDailyStats(data) {
           </div>
         </section>
         <section class="table-card span-12">
-          <div class="table-header"><h2>交易流水</h2><span class="pill">${formatNumber(tradeRows.length)} rows</span></div>
-          ${renderDailyTradeTable(tradeRows, currency)}
+          <div class="table-header"><h2>交易流水</h2><span class="pill">${rowCountLabel}</span></div>
+          ${renderDailyTradeTable(tradeRows, currency, emptyTradeMessage)}
         </section>
       </div>
     </div>
@@ -1401,8 +1416,8 @@ function renderDailyStat(label, value, tone = null) {
   `;
 }
 
-function renderDailyTradeTable(rows, currency) {
-  if (!rows.length) return renderEmpty("当前月份没有交易记录。");
+function renderDailyTradeTable(rows, currency, emptyMessage = "当前月份没有交易记录。") {
+  if (!rows.length) return renderEmpty(emptyMessage);
   const tableRows = rows.map((row) => [
     formatDateTime(row.dateTime),
     `<strong>${escapeHtml(row.baseSymbol || row.symbol || "-")}</strong>`,
@@ -1977,6 +1992,12 @@ function bindDashboardEvents() {
     nextSearch?.focus();
     nextSearch?.setSelectionRange(nextSearch.value.length, nextSearch.value.length);
   });
+
+  document.querySelector("#globalSearchClear")?.addEventListener("click", () => {
+    state.search = "";
+    render();
+    document.querySelector("#globalSearch")?.focus();
+  });
 }
 
 function bindThemeToggle() {
@@ -2404,7 +2425,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.8");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.9");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -3128,6 +3149,62 @@ function searchMatch(values) {
   const query = state.search.trim().toLowerCase();
   if (!query) return true;
   return values.some((value) => String(value || "").toLowerCase().includes(query));
+}
+
+function dailyTradeSearchMatch(row) {
+  return searchMatch([
+    row.symbol,
+    row.baseSymbol,
+    row.assetCategory,
+    row.currency,
+    row.side,
+    row.side === "Buy" ? "买入" : "",
+    row.side === "Sell" ? "卖出" : "",
+    row.code,
+    row.date,
+    formatDate(row.date),
+    formatDateTime(row.dateTime)
+  ]);
+}
+
+function summarizeDailyTradeRows(rows) {
+  const daily = new Map();
+
+  for (const trade of rows || []) {
+    if (!trade.date) continue;
+    const [year, month, day] = trade.date.split("-").map(Number);
+    const key = trade.date;
+
+    if (!daily.has(key)) {
+      daily.set(key, {
+        date: key,
+        month: trade.month || `${year}-${String(month).padStart(2, "0")}`,
+        day,
+        tradeCount: 0,
+        realizedPL: 0,
+        mtmPL: 0,
+        grossTradeValue: 0,
+        commissions: 0,
+        symbols: new Set()
+      });
+    }
+
+    const row = daily.get(key);
+    row.tradeCount += 1;
+    row.realizedPL += trade.realizedPL || 0;
+    row.mtmPL += trade.mtmPL || 0;
+    row.grossTradeValue += trade.grossValue || 0;
+    row.commissions += Math.abs(trade.commission || 0);
+    if (trade.symbol) row.symbols.add(trade.symbol);
+  }
+
+  return Array.from(daily.values())
+    .map((row) => ({
+      ...row,
+      symbolCount: row.symbols.size,
+      symbols: Array.from(row.symbols).sort()
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function renderDateRange(data) {

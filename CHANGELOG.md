@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.9-macos.1
+
+Bugfix release.
+
+- Fixed the top-bar search on the Daily view.
+- Search now filters Daily trade history and recomputes the P/L calendar, daily trade chart, and summary cards from matching trades.
+- Added a compact clear-search button in the dashboard search field.
+
 ## v2.1.8-macos.1
 
 First macOS-focused release.

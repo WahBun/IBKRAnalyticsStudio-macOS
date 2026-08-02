@@ -1021,6 +1021,8 @@ svg {
 
 .search-wrap {
   position: relative;
+  display: inline-flex;
+  align-items: center;
 }
 
 .search-wrap svg {
@@ -1034,12 +1036,38 @@ svg {
 .search-input {
   width: 280px;
   min-height: 34px;
-  padding: 7px 10px 7px 34px;
+  padding: 7px 34px 7px 34px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   color: var(--ink);
   background: var(--surface);
   font-size: 13px;
+}
+
+.search-clear-button {
+  position: absolute;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  color: var(--faint);
+  background: transparent;
+  cursor: pointer;
+}
+
+.search-clear-button svg {
+  position: static;
+  width: 14px;
+  height: 14px;
+  transform: none;
+}
+
+.search-clear-button:hover {
+  color: var(--ink);
+  background: var(--surface-low);
 }
 
 .dashboard-content {
