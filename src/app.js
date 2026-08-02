@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.1.9";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.9";
-import { parseIbkrReport } from "./parser.js?v=2.1.9";
+import { decodeReportFile } from "./encoding.js?v=2.1.10";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.10";
+import { parseIbkrReport } from "./parser.js?v=2.1.10";
 
 const app = document.querySelector("#app");
 
@@ -324,7 +324,7 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.9";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.10";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#3186f6", "#0b6b5d", "#b57936", "#7c6ee6", "#d85d5d", "#2aa6a1"];
 const POSITION_PIE_COLORS = ["#3186f6", "#0b6b5d", "#b57936", "#7c6ee6", "#d85d5d", "#2aa6a1", "#69a64d", "#bd6aa8"];
@@ -335,7 +335,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const SP500_BENCHMARK_URL = "https://sp500-proxy.3368517784.workers.dev";
-const APP_VERSION = "2.1.9";
+const APP_VERSION = "2.1.10";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -840,7 +840,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.1.9" alt="" />
+        <img src="./assets/app-logo.png?v=2.1.10" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -958,6 +958,9 @@ function renderOverview(data) {
 function renderPerformance(data) {
   const currency = data.baseCurrency || "USD";
   const pl = data.plSummary.total;
+  const realizedReturn = safePercent(pl.realized, data.nav.total);
+  const unrealizedReturn = safePercent(pl.unrealized, data.nav.total);
+  const totalReturn = safePercent(pl.total, data.nav.total);
 
   return `
     <div class="content-stack">
@@ -965,17 +968,20 @@ function renderPerformance(data) {
       <div class="grid-12">
         ${renderKpi("已实现盈亏", formatMoney(pl.realized, currency), "Realized P/L", "span-4 performance-kpi", pl.realized, {
           label: t("returnRate"),
-          value: `${formatSignedPercent(safePercent(pl.realized, data.nav.total))} / NAV`,
+          value: `${formatCompactSignedPercent(realizedReturn)} / NAV`,
+          title: `${formatSignedPercent(realizedReturn)} / NAV`,
           toneValue: pl.realized
         })}
         ${renderKpi("未实现盈亏", formatMoney(pl.unrealized, currency), "Unrealized P/L", "span-4 performance-kpi", pl.unrealized, {
           label: t("returnRate"),
-          value: `${formatSignedPercent(safePercent(pl.unrealized, data.nav.total))} / NAV`,
+          value: `${formatCompactSignedPercent(unrealizedReturn)} / NAV`,
+          title: `${formatSignedPercent(unrealizedReturn)} / NAV`,
           toneValue: pl.unrealized
         })}
         ${renderKpi("总盈亏", formatMoney(pl.total, currency), "Total P/L", "span-4 is-featured performance-kpi", pl.total, {
           label: t("returnRate"),
-          value: `${formatSignedPercent(safePercent(pl.total, data.nav.total))} / NAV`,
+          value: `${formatCompactSignedPercent(totalReturn)} / NAV`,
+          title: `${formatSignedPercent(totalReturn)} / NAV`,
           toneValue: pl.total
         })}
         <section class="dashboard-card span-6">
@@ -1163,7 +1169,7 @@ function renderKpi(label, value, foot, className = "span-3", toneValue = null, s
         ${sideMetric ? `
           <div class="kpi-side">
             <span>${escapeHtml(sideMetric.label || "")}</span>
-            <strong class="${sideToneClass.trim()}">${escapeHtml(sideMetric.value || "")}</strong>
+            <strong class="${sideToneClass.trim()}" title="${escapeAttribute(sideMetric.title || sideMetric.value || "")}">${escapeHtml(sideMetric.value || "")}</strong>
           </div>
         ` : ""}
       </div>
@@ -1210,7 +1216,7 @@ function renderPlCategory(label, value, currency, maxAbs) {
     <div class="pl-category-card">
       <div class="pl-category-head">
         <span>${escapeHtml(label)}</span>
-        <strong class="${valueClass(value.total)}">${formatMoney(value.total, currency)}</strong>
+        <strong class="${valueClass(value.total)}" title="${escapeAttribute(formatMoney(value.total, currency))}">${formatMoney(value.total, currency)}</strong>
       </div>
       ${renderPlMetric(t("realized"), value.realized, currency, maxAbs)}
       ${renderPlMetric(t("unrealized"), value.unrealized, currency, maxAbs)}
@@ -1225,7 +1231,7 @@ function renderPlMetric(label, value, currency, maxAbs) {
     <div class="pl-metric">
       <div class="pl-metric-top">
         <span>${escapeHtml(label)}</span>
-        <strong class="${valueClass(value)}">${formatMoney(value, currency)}</strong>
+        <strong class="${valueClass(value)}" title="${escapeAttribute(formatMoney(value, currency))}">${formatMoney(value, currency)}</strong>
       </div>
       <div class="pl-metric-track" aria-hidden="true">
         <span class="pl-metric-fill ${value < 0 ? "is-negative" : "is-positive"}" style="width:${width}%"></span>
@@ -1456,13 +1462,16 @@ function renderAllocation(rows, currency) {
   const max = Math.max(1, ...rows.map((row) => Math.abs(row.value)));
   return `
     <div class="allocation-grid">
-      ${rows.slice(0, 8).map((row) => `
+      ${rows.slice(0, 8).map((row) => {
+        const valueLabel = `${formatMoney(row.value, currency)} · ${formatPercent((row.weight || 0) * 100)}`;
+        return `
         <div class="allocation-row">
           <strong>${escapeHtml(displayGroup(row.name))}</strong>
           <div class="mini-track"><div class="mini-fill" style="width:${Math.max(2, Math.abs(row.value) / max * 100)}%"></div></div>
-          <span class="numeric mono">${formatMoney(row.value, currency)} · ${formatPercent((row.weight || 0) * 100)}</span>
+          <span class="numeric mono" title="${escapeAttribute(valueLabel)}">${escapeHtml(valueLabel)}</span>
         </div>
-      `).join("")}
+      `;
+      }).join("")}
     </div>
   `;
 }
@@ -2425,7 +2434,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.9");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.10");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -3320,6 +3329,23 @@ function formatPercent(value) {
 function formatSignedPercent(value) {
   const amount = Number.isFinite(value) ? value : 0;
   return `${amount > 0 ? "+" : ""}${formatPercent(amount)}`;
+}
+
+function formatCompactSignedPercent(value) {
+  const amount = Number.isFinite(value) ? value : 0;
+  const prefix = amount > 0 ? "+" : "";
+  return `${prefix}${formatCompactPercent(amount)}`;
+}
+
+function formatCompactPercent(value) {
+  const amount = Number.isFinite(value) ? value : 0;
+  if (Math.abs(amount) < 10000) return formatPercent(amount);
+
+  const formatted = new Intl.NumberFormat(numberLocale(), {
+    notation: "compact",
+    maximumFractionDigits: 2
+  }).format(amount);
+  return `${formatted}%`;
 }
 
 function formatDate(value) {

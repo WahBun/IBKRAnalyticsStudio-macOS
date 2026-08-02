@@ -1159,6 +1159,7 @@ svg {
   flex-direction: column;
   justify-content: space-between;
   min-height: 128px;
+  overflow: hidden;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1194,6 +1195,7 @@ svg {
   line-height: 34px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .kpi-foot {
@@ -1204,10 +1206,10 @@ svg {
 }
 
 .performance-kpi .kpi-body {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
 }
 
 .performance-kpi .kpi-main {
@@ -1220,15 +1222,20 @@ svg {
 }
 
 .kpi-side {
-  display: grid;
-  justify-items: end;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 5px;
-  min-width: 104px;
-  padding-bottom: 2px;
-  text-align: right;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-low);
+  text-align: left;
 }
 
 .kpi-side span {
+  flex: 0 0 auto;
   color: var(--muted);
   font-size: 12px;
   line-height: 16px;
@@ -1236,10 +1243,14 @@ svg {
 }
 
 .kpi-side strong {
+  min-width: 0;
   color: var(--ink);
   font-size: 15px;
   line-height: 20px;
   font-weight: 900;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1579,9 +1590,9 @@ tbody tr:hover {
 
 .pl-total-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: end;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  align-items: start;
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1604,27 +1615,33 @@ tbody tr:hover {
 
 .pl-total-split {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  min-width: 220px;
+  min-width: 0;
 }
 
 .pl-total-split span {
   display: flex;
   justify-content: space-between;
+  min-width: 0;
   gap: 18px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
   background: var(--surface);
-  white-space: nowrap;
 }
 
 .pl-total-split b {
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 800;
 }
 
 .pl-category-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 14px;
 }
 
@@ -1639,15 +1656,17 @@ tbody tr:hover {
 }
 
 .pl-category-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--line);
 }
 
 .pl-category-head span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--ink);
   font-size: 14px;
   font-weight: 900;
@@ -1655,6 +1674,9 @@ tbody tr:hover {
 }
 
 .pl-category-head strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 14px;
   white-space: nowrap;
 }
@@ -1665,18 +1687,26 @@ tbody tr:hover {
 }
 
 .pl-metric-top {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: baseline;
   gap: 8px;
   color: var(--muted);
   font-size: 13px;
 }
 
 .pl-metric-top span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pl-metric-top strong {
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -1710,20 +1740,29 @@ tbody tr:hover {
 
 .allocation-row {
   display: grid;
-  grid-template-columns: minmax(90px, 120px) minmax(120px, 1fr) minmax(150px, auto);
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
   align-items: center;
-  gap: 10px;
+  gap: 6px 10px;
   font-size: 13px;
 }
 
 .allocation-row > strong {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .allocation-row > .numeric {
-  min-width: 150px;
+  min-width: 0;
+  overflow: hidden;
   text-align: right;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.allocation-row > .mini-track {
+  grid-column: 1 / -1;
 }
 
 .return-curve-card {
@@ -2411,8 +2450,7 @@ tbody tr:hover {
   }
 
   .pl-category-grid {
-    grid-template-columns: repeat(3, minmax(160px, 1fr));
-    overflow-x: auto;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   }
 }
 
@@ -2533,6 +2571,7 @@ tbody tr:hover {
   }
 
   .pl-total-split {
+    grid-template-columns: 1fr;
     min-width: 0;
   }
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.10-macos.1
+
+UI bugfix release.
+
+- Fixed overflow in Positions distribution cards when labels, bars, and values compete for narrow card width.
+- Fixed Performance KPI return values overflowing their cards by using compact return percentages with full values available on hover.
+- Improved P/L distribution layout so totals and category cards stay inside their boundaries at medium desktop widths.
+
 ## v2.1.9-macos.1
 
 Bugfix release.
