@@ -364,6 +364,7 @@ function flexPositionRow(row) {
     Symbol: row.Symbol || "",
     Quantity: row.Quantity || "0",
     Mult: row.Multiplier || "1",
+    "Cost Price": row.CostPrice || row.AverageCost || row.AvgCost || "0",
     "Cost Basis": row.CostBasisMoney || "0",
     "Close Price": row.MarkPrice || "0",
     Value: row.PositionValue || "0",
@@ -544,6 +545,8 @@ function flexDividendAccrualRow(row) {
 function flexAssetCategory(value) {
   const assetClass = String(value || "").toUpperCase();
   if (assetClass === "STK") return "Stocks";
+  if (assetClass === "FOP" || assetClass.includes("FUTURE OPTION")) return "Futures Options";
+  if (assetClass === "FUT" || assetClass === "CONTFUT" || assetClass.includes("FUTURE")) return "Futures";
   if (assetClass === "OPT" || assetClass === "IOPT" || assetClass.includes("OPTION")) return OPTION_ASSET;
   if (assetClass === "CASH" || assetClass === "FX" || assetClass === "FOREX") return "Forex";
   if (assetClass === "BOND") return "Bonds";
@@ -891,6 +894,7 @@ function parseOpenPositions(rows = [], exchangeRates) {
         quantity,
         side: quantity < 0 ? "Short" : "Long",
         multiplier: toNumber(row.Mult),
+        costPrice: toNumber(row["Cost Price"]),
         costBasis: toNumber(row["Cost Basis"]) * rate,
         closePrice: toNumber(row["Close Price"]),
         value: toNumber(row.Value) * rate,
@@ -930,6 +934,8 @@ function aggregateOpenPositions(positions) {
         dividends: 0,
         unrealizedPL: 0,
         lotCount: 0,
+        costPriceWeightedTotal: 0,
+        costPriceWeight: 0,
         closePriceWeightedTotal: 0,
         closePriceWeight: 0
       });
@@ -942,6 +948,8 @@ function aggregateOpenPositions(positions) {
     group.dividends += position.dividends || 0;
     group.unrealizedPL += position.unrealizedPL;
     group.lotCount += position.lotCount || 1;
+    group.costPriceWeightedTotal += position.costPrice * weight;
+    group.costPriceWeight += weight;
     group.closePriceWeightedTotal += position.closePrice * weight;
     group.closePriceWeight += weight;
   }
@@ -950,6 +958,8 @@ function aggregateOpenPositions(positions) {
     .filter((position) => position.quantity !== 0 || position.value !== 0)
     .map((position) => {
       const {
+        costPriceWeightedTotal,
+        costPriceWeight,
         closePriceWeightedTotal,
         closePriceWeight,
         ...cleanPosition
@@ -957,6 +967,9 @@ function aggregateOpenPositions(positions) {
 
       return {
         ...cleanPosition,
+        costPrice: costPriceWeight
+          ? costPriceWeightedTotal / costPriceWeight
+          : cleanPosition.costPrice,
         closePrice: closePriceWeight
           ? closePriceWeightedTotal / closePriceWeight
           : cleanPosition.closePrice

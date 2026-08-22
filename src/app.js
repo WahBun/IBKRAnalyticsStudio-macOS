@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.1.11";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.11";
-import { parseIbkrReport } from "./parser.js?v=2.1.11";
+import { decodeReportFile } from "./encoding.js?v=2.1.12";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.12";
+import { parseIbkrReport } from "./parser.js?v=2.1.12";
 
 const app = document.querySelector("#app");
 
@@ -54,7 +54,9 @@ const copy = {
     shareImage: "生成分享图",
     replaceFile: "更换文件",
     refreshReport: "刷新报表",
+    refreshReportShort: "刷新",
     refreshingReport: "刷新中...",
+    refreshingReportShort: "刷新中",
     searchPlaceholder: "搜索代码或标签...",
     clearSearch: "清空搜索",
     refreshHelp: "刷新状态说明",
@@ -69,7 +71,7 @@ const copy = {
     dailyHeading: "每日统计",
     dailySubtitle: "按交易日期查看每日已实现盈亏、交易笔数和成交金额。",
     positionsHeading: "持仓明细",
-    positionsSubtitle: "按标的、资产类别、方向和币种查看当前 Open Positions。",
+    positionsSubtitle: "按标的、资产类别和方向查看当前 Open Positions。",
     dataHeading: "数据质量",
     dataSubtitle: "核对解析区块、汇率和诊断信息，适合排查报表字段缺失。",
     shareDialogTitle: "生成社交分享图",
@@ -133,7 +135,9 @@ const copy = {
     shareImage: "Share image",
     replaceFile: "Replace file",
     refreshReport: "Refresh report",
+    refreshReportShort: "Refresh",
     refreshingReport: "Refreshing...",
+    refreshingReportShort: "Refreshing",
     searchPlaceholder: "Search symbols or tags...",
     clearSearch: "Clear search",
     refreshHelp: "Refresh status help",
@@ -148,7 +152,7 @@ const copy = {
     dailyHeading: "Daily Stats",
     dailySubtitle: "Review daily realized P/L, trade count, and gross trading value by trade date.",
     positionsHeading: "Positions",
-    positionsSubtitle: "Review current Open Positions by symbol, asset class, direction, and currency.",
+    positionsSubtitle: "Review current Open Positions by symbol, asset class, and direction.",
     dataHeading: "Data Quality",
     dataSubtitle: "Check parsed sections, rates, and diagnostics for missing statement fields.",
     shareDialogTitle: "Generate Social Share Image",
@@ -255,6 +259,7 @@ const ENGLISH_UI_REPLACEMENTS = [
   ["资产", "Asset"],
   ["数量", "Quantity"],
   ["市值", "Market value"],
+  ["平均成本", "Avg cost"],
   ["成本", "Cost"],
   ["股息", "Dividends"],
   ["未实现", "Unrealized"],
@@ -278,6 +283,8 @@ const ENGLISH_UI_REPLACEMENTS = [
   ["未识别账户", "Unknown account"],
   ["股票", "Stocks"],
   ["期权", "Options"],
+  ["期货期权", "Futures Options"],
+  ["期货", "Futures"],
   ["外汇", "Forex"],
   ["多头", "Long"],
   ["空头", "Short"],
@@ -334,7 +341,7 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.11";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.12";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#3186f6", "#0b6b5d", "#b57936", "#7c6ee6", "#d85d5d", "#2aa6a1"];
 const POSITION_PIE_COLORS = ["#3186f6", "#0b6b5d", "#b57936", "#7c6ee6", "#d85d5d", "#2aa6a1", "#69a64d", "#bd6aa8"];
@@ -345,7 +352,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const SP500_BENCHMARK_URL = "https://sp500-proxy.3368517784.workers.dev";
-const APP_VERSION = "2.1.11";
+const APP_VERSION = "2.1.12";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -805,8 +812,9 @@ function renderFlexSyncStatus() {
 function renderDashboardFlexRefreshButton(id, iconOnly = false) {
   if (!canRefreshFlexFromDashboard()) return "";
   const label = state.backgroundRefreshBusy ? t("refreshingReport") : t("refreshReport");
-  const className = iconOnly ? "icon-button" : "secondary-button dashboard-refresh-button";
-  return `<button class="${className}" id="${id}" type="button" ${state.backgroundRefreshBusy ? "disabled" : ""} title="${escapeAttribute(label)}" aria-label="${escapeAttribute(label)}">${icon("reset")}${iconOnly ? "" : label}</button>`;
+  const shortLabel = state.backgroundRefreshBusy ? t("refreshingReportShort") : t("refreshReportShort");
+  const className = iconOnly ? "icon-button" : "refresh-action-button dashboard-refresh-button";
+  return `<button class="${className}" id="${id}" type="button" ${state.backgroundRefreshBusy ? "disabled" : ""} title="${escapeAttribute(label)}" aria-label="${escapeAttribute(label)}">${icon("reset")}${iconOnly ? "" : `<span>${escapeHtml(shortLabel)}</span>`}</button>`;
 }
 
 function canRefreshFlexFromDashboard() {
@@ -879,7 +887,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.1.11" alt="" />
+        <img src="./assets/app-logo.png?v=2.1.12" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -997,32 +1005,14 @@ function renderOverview(data) {
 function renderPerformance(data) {
   const currency = data.baseCurrency || "USD";
   const pl = data.plSummary.total;
-  const realizedReturn = safePercent(pl.realized, data.nav.total);
-  const unrealizedReturn = safePercent(pl.unrealized, data.nav.total);
-  const totalReturn = safePercent(pl.total, data.nav.total);
 
   return `
     <div class="content-stack">
       ${renderPageHeading(t("performanceHeading"), data, t("performanceSubtitle"))}
       <div class="grid-12">
-        ${renderKpi("已实现盈亏", formatMoney(pl.realized, currency), "Realized P/L", "span-4 performance-kpi", pl.realized, {
-          label: t("returnRate"),
-          value: `${formatCompactSignedPercent(realizedReturn)} / NAV`,
-          title: `${formatSignedPercent(realizedReturn)} / NAV`,
-          toneValue: pl.realized
-        })}
-        ${renderKpi("未实现盈亏", formatMoney(pl.unrealized, currency), "Unrealized P/L", "span-4 performance-kpi", pl.unrealized, {
-          label: t("returnRate"),
-          value: `${formatCompactSignedPercent(unrealizedReturn)} / NAV`,
-          title: `${formatSignedPercent(unrealizedReturn)} / NAV`,
-          toneValue: pl.unrealized
-        })}
-        ${renderKpi("总盈亏", formatMoney(pl.total, currency), "Total P/L", "span-4 is-featured performance-kpi", pl.total, {
-          label: t("returnRate"),
-          value: `${formatCompactSignedPercent(totalReturn)} / NAV`,
-          title: `${formatSignedPercent(totalReturn)} / NAV`,
-          toneValue: pl.total
-        })}
+        ${renderKpi("已实现盈亏", formatMoney(pl.realized, currency), "", "span-4 performance-kpi", pl.realized)}
+        ${renderKpi("未实现盈亏", formatMoney(pl.unrealized, currency), "", "span-4 performance-kpi", pl.unrealized)}
+        ${renderKpi("总盈亏", formatMoney(pl.total, currency), "", "span-4 is-featured performance-kpi", pl.total)}
         <section class="dashboard-card span-6">
           <div class="card-header">
             <div>
@@ -1123,22 +1113,18 @@ function renderPositions(data) {
   ]));
   return `
     <div class="content-stack">
-      ${renderPageHeading(t("positionsHeading"), data, t("positionsSubtitle"))}
+      ${renderPageHeading(t("positionsHeading"), data, t("positionsSubtitle"), { showCurrency: false })}
       <div class="grid-12">
-        <section class="dashboard-card span-4">
-          <div class="card-header"><h2>持仓资产分布</h2><span class="pill">${formatNumber(rows.length)} rows</span></div>
-          ${renderAllocation(summarizeVisiblePositions(rows, "assetCategory"), currency)}
+        <section class="dashboard-card span-6">
+          <div class="card-header"><h2>持仓资产分布</h2></div>
+          ${renderAllocation(summarizeVisiblePositions(rows, "assetCategory"), currency, { showPercent: false, className: "allocation-grid is-holdings" })}
         </section>
-        <section class="dashboard-card span-4">
+        <section class="dashboard-card span-6">
           <div class="card-header"><h2>方向</h2></div>
-          ${renderAllocation(summarizeVisiblePositions(rows, "side"), currency)}
-        </section>
-        <section class="dashboard-card span-4">
-          <div class="card-header"><h2>币种</h2></div>
-          ${renderAllocation(summarizeVisiblePositions(rows, "currency"), currency)}
+          ${renderAllocation(summarizeVisiblePositions(rows, "side"), currency, { showPercent: false, className: "allocation-grid is-holdings" })}
         </section>
         <section class="table-card span-12">
-          <div class="table-header"><h2>Open Positions</h2><span class="pill">${formatNumber(rows.length)} / ${formatNumber(data.positions.length)}</span></div>
+          <div class="table-header"><h2>Open Positions</h2></div>
           ${rows.length ? renderPositionsTable(rows, currency) : renderEmpty("没有匹配的持仓。")}
         </section>
         <section class="dashboard-card span-12 position-chart-card">
@@ -1182,12 +1168,17 @@ function renderDataQuality(data) {
   `;
 }
 
-function renderPageHeading(title, data, subtitle) {
+function renderPageHeading(title, data, subtitle, options = {}) {
+  const meta = [
+    renderDateRange(data),
+    options.showCurrency === false ? "" : `${t("baseCurrency")}：${data.baseCurrency || "USD"}`,
+    `${t("account")}：${maskAccount(data.accountInfo.account)}`
+  ].filter(Boolean).join(" · ");
   return `
     <div class="page-heading">
       <div class="page-title">
         <h1>${escapeHtml(title)}</h1>
-        <p>${escapeHtml(renderDateRange(data))} · ${t("baseCurrency")}：${escapeHtml(data.baseCurrency || "USD")} · ${t("account")}：${escapeHtml(maskAccount(data.accountInfo.account))}</p>
+        <p>${escapeHtml(meta)}</p>
         <p>${escapeHtml(subtitle)}</p>
       </div>
     </div>
@@ -1197,13 +1188,14 @@ function renderPageHeading(title, data, subtitle) {
 function renderKpi(label, value, foot, className = "span-3", toneValue = null, sideMetric = null) {
   const toneClass = Number.isFinite(toneValue) && toneValue !== 0 ? (toneValue > 0 ? " positive" : " negative") : "";
   const sideToneClass = sideMetric && Number.isFinite(sideMetric.toneValue) && sideMetric.toneValue !== 0 ? ` ${valueClass(sideMetric.toneValue)}` : "";
+  const footHtml = foot ? `<div class="kpi-foot">${escapeHtml(foot)}</div>` : "";
   return `
     <section class="kpi-card ${className}">
       <div class="kpi-label">${escapeHtml(label)}</div>
       <div class="kpi-body">
         <div class="kpi-main">
           <div class="kpi-value${toneClass}">${escapeHtml(value)}</div>
-          <div class="kpi-foot">${escapeHtml(foot || "")}</div>
+          ${footHtml}
         </div>
         ${sideMetric ? `
           <div class="kpi-side">
@@ -1314,13 +1306,32 @@ function renderPositionsTable(rows, currency) {
     escapeHtml(row.assetCategory || "-"),
     sideLabel(row.side),
     formatNumber(row.quantity, 4),
+    formatMoney(positionUnitCost(row), row.currency || currency),
     formatMoney(row.value, row.currency || currency),
     formatMoney(row.costBasis, row.currency || currency),
     `<span class="${valueClass(row.dividends)}">${formatMoney(row.dividends || 0, row.currency || currency)}</span>`,
-    `<span class="${valueClass(row.unrealizedPL)}">${signedMoney(row.unrealizedPL, row.currency || currency)}</span>`,
-    escapeHtml(row.currency || currency)
+    `<span class="${valueClass(row.unrealizedPL)}">${signedMoney(row.unrealizedPL, row.currency || currency)}</span>`
   ]);
-  return renderSimpleTable(["标的", "资产", "方向", "数量", "市值", "成本", "股息", "未实现", "币种"], tableRows, [false, false, false, true, true, true, true, true, false], true);
+  return renderSimpleTable(["标的", "资产", "方向", "数量", "平均成本", "市值", "成本", "股息", "未实现"], tableRows, [false, false, false, true, true, true, true, true, true], true);
+}
+
+function positionUnitCost(row) {
+  if (Number.isFinite(row.costPrice) && row.costPrice !== 0) {
+    return Math.abs(row.costPrice);
+  }
+
+  const quantity = Math.abs(row.quantity || 0);
+  if (!quantity) return 0;
+
+  const multiplier = positionUnitMultiplier(row);
+  return Math.abs(row.costBasis || 0) / (quantity * multiplier);
+}
+
+function positionUnitMultiplier(row) {
+  const multiplier = Number(row.multiplier);
+  const asset = String(row.assetCategory || "").toLowerCase();
+  const shouldUseMultiplier = row.isOption || asset.includes("future");
+  return shouldUseMultiplier && Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
 }
 
 function buildPositionAssetAllocation(positions, cash = 0, currency = "USD") {
@@ -1496,13 +1507,17 @@ function renderSimpleTable(headers, rows, numericColumns = [], allowHtml = false
   `;
 }
 
-function renderAllocation(rows, currency) {
+function renderAllocation(rows, currency, options = {}) {
   if (!rows || !rows.length) return renderEmpty("暂无可展示的数据。");
+  const showPercent = options.showPercent !== false;
+  const className = options.className || "allocation-grid";
   const max = Math.max(1, ...rows.map((row) => Math.abs(row.value)));
   return `
-    <div class="allocation-grid">
+    <div class="${escapeAttribute(className)}">
       ${rows.slice(0, 8).map((row) => {
-        const valueLabel = `${formatMoney(row.value, currency)} · ${formatPercent((row.weight || 0) * 100)}`;
+        const valueLabel = showPercent
+          ? `${formatMoney(row.value, currency)} · ${formatPercent((row.weight || 0) * 100)}`
+          : formatMoney(row.value, currency);
         return `
         <div class="allocation-row">
           <strong>${escapeHtml(displayGroup(row.name))}</strong>
@@ -2573,7 +2588,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.11");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.12");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -3380,6 +3395,8 @@ function displayGroup(name) {
   const labels = {
     Stocks: "股票",
     "Equity and Index Options": "期权",
+    Futures: "期货",
+    "Futures Options": "期货期权",
     Forex: "外汇",
     Cash: "现金",
     Long: "多头",

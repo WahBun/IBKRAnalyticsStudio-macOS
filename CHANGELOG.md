@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.1.12-macos.1
+
+Positions UI polish release.
+
+- Restyled the Flex refresh action into a lighter blue/cyan toolbar button.
+- Simplified the Positions page by removing currency-only UI, row-count pills, and allocation percentages from the top cards.
+- Added average cost to open positions and normalized futures / futures-options asset labels.
+- Centered the Performance P/L cards after removing return rows and duplicate helper text.
+
 ## v2.1.11-macos.1
 
 Refresh performance release.
