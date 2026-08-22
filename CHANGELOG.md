@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.1.13-macos.1
+
+Overview polish release.
+
+- Shortened the dashboard refresh status pill so it does not crowd tab titles and search.
+- Unified allocation bars and pie charts with the blue/cyan holdings palette.
+- Replaced static conic pies with interactive SVG rings that expose segment amounts on hover.
+- Hid the return curve when daily NAV/TWR data is incomplete instead of showing misleading returns.
+
 ## v2.1.12-macos.1
 
 Positions UI polish release.

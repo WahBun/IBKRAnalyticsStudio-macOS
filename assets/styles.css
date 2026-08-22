@@ -1041,7 +1041,7 @@ html[data-theme="dark"] .refresh-action-button:hover {
   display: inline-flex;
   align-items: center;
   min-height: 22px;
-  max-width: 340px;
+  max-width: 160px;
   padding: 2px 8px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -2090,7 +2090,7 @@ tbody tr:hover {
 
 .mini-fill {
   height: 100%;
-  background: var(--accent);
+  background: linear-gradient(90deg, #38bdf8, #2dd4bf);
 }
 
 .allocation-grid.is-holdings .mini-track {
@@ -2111,33 +2111,51 @@ tbody tr:hover {
 }
 
 .pie-visual {
-  position: relative;
   width: 190px;
   aspect-ratio: 1;
   margin: 0 auto;
-  border-radius: 50%;
-  background: conic-gradient(var(--pie-gradient));
-  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: visible;
 }
 
-.pie-visual::after {
-  content: "";
-  position: absolute;
-  inset: 26px;
-  border-radius: 50%;
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1px var(--line);
+.pie-ring-bg {
+  fill: none;
+  stroke: var(--surface-mid);
+  stroke-width: 46;
 }
 
-.pie-visual span {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  color: var(--ink);
-  font-size: 18px;
-  font-weight: 820;
+.pie-slice {
+  stroke-width: 46;
+  stroke-linecap: butt;
+  pointer-events: stroke;
+  outline: none;
+  transition: opacity 0.16s ease, stroke-width 0.16s ease, filter 0.16s ease;
+}
+
+.pie-slice:hover,
+.pie-slice:focus {
+  opacity: 0.92;
+  stroke-width: 50;
+  filter: drop-shadow(0 4px 10px rgba(56, 189, 248, 0.25));
+}
+
+.pie-hole {
+  fill: var(--surface);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.pie-center-main {
+  fill: var(--ink);
+  font-size: 15px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.pie-center-sub {
+  fill: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .pie-legend {
@@ -2147,11 +2165,11 @@ tbody tr:hover {
 
 .pie-legend-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(90px, auto);
   align-items: center;
-  gap: 12px;
-  min-height: 32px;
-  padding: 0 10px;
+  gap: 18px;
+  min-height: 44px;
+  padding: 7px 10px;
   border-radius: var(--radius);
   background: var(--surface-low);
   color: var(--muted);
@@ -2178,10 +2196,33 @@ tbody tr:hover {
   flex: 0 0 auto;
 }
 
+.pie-value {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pie-value strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 900;
+}
+
+.pie-value span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 15px;
+}
+
 .pie-total {
-  margin-top: 4px;
+  margin-top: 6px;
   color: var(--muted);
   font-size: 13px;
+  text-align: center;
 }
 
 .position-chart-card {
@@ -2200,9 +2241,7 @@ tbody tr:hover {
 .asset-pie {
   width: min(320px, 100%);
   aspect-ratio: 1;
-  border-radius: 50%;
-  background: conic-gradient(var(--position-pie-gradient));
-  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: visible;
 }
 
 .position-pie-legend {
@@ -2211,49 +2250,31 @@ tbody tr:hover {
   gap: 10px;
 }
 
-.position-pie-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  min-height: 42px;
+.position-pie-legend .pie-legend-row {
+  min-height: 48px;
+}
+
+.chart-tooltip {
+  position: fixed;
+  z-index: 80;
+  max-width: 240px;
   padding: 8px 10px;
-  border-radius: var(--radius);
-  background: var(--surface-low);
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.position-pie-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
   color: var(--ink);
-  font-weight: 800;
-}
-
-.position-pie-label i {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  flex: 0 0 auto;
-}
-
-.position-pie-value {
-  display: grid;
-  justify-items: end;
-  gap: 2px;
-  white-space: nowrap;
-}
-
-.position-pie-value strong {
-  color: var(--ink);
-}
-
-.position-pie-value span {
-  color: var(--muted);
+  background: var(--surface);
   font-size: 12px;
+  line-height: 16px;
+  font-weight: 800;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(-9999px, -9999px, 0);
+  transition: opacity 0.12s ease;
+}
+
+.chart-tooltip.is-visible {
+  opacity: 1;
 }
 
 .chart-card {

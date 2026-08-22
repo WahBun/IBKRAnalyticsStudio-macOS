@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.1.12";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.12";
-import { parseIbkrReport } from "./parser.js?v=2.1.12";
+import { decodeReportFile } from "./encoding.js?v=2.1.13";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.13";
+import { parseIbkrReport } from "./parser.js?v=2.1.13";
 
 const app = document.querySelector("#app");
 
@@ -60,6 +60,7 @@ const copy = {
     searchPlaceholder: "搜索代码或标签...",
     clearSearch: "清空搜索",
     refreshHelp: "刷新状态说明",
+    cachedAt: "缓存时间",
     baseCurrency: "基础货币",
     account: "账户",
     unknownAccount: "未识别账户",
@@ -141,6 +142,7 @@ const copy = {
     searchPlaceholder: "Search symbols or tags...",
     clearSearch: "Clear search",
     refreshHelp: "Refresh status help",
+    cachedAt: "Cached at",
     baseCurrency: "Base currency",
     account: "Account",
     unknownAccount: "Unknown account",
@@ -194,12 +196,20 @@ const ENGLISH_UI_REPLACEMENTS = [
   ["报表刷新失败，继续显示缓存", "Report refresh failed, showing cached report"],
   ["IBKR 仍在生成报表，显示缓存", "IBKR is still generating the report, showing cached report"],
   ["报表刷新连接失败，显示缓存", "Report refresh connection failed, showing cached report"],
+  ["当前报表里的 NAV 为 0，但持仓/现金已有数值，说明 Flex Query 的 NAV 数据不完整。请确认已包含 Net Asset Value (NAV) in Base，再刷新报表。", "The report NAV is 0 while positions or cash have value, so the Flex Query NAV data is incomplete. Include Net Asset Value (NAV) in Base, then refresh the report."],
+  ["当前 Flex 报表没有足够的逐日 NAV/TWR 数据，暂不绘制收益率曲线。", "The current Flex report does not have enough daily NAV/TWR data, so the return curve is hidden."],
+  ["逐日 NAV 数据存在 0 或缺失值，曲线容易失真，暂不绘制。", "Daily NAV contains zero or missing values, so the curve may be distorted and is hidden."],
+  ["当前 Flex 报表没有逐日 TWR，无法画出剔除入金影响的收益率曲线。请在 Activity Flex Query 的 Change in NAV 中打开 Breakout by Day，然后重新拉取。", "The current Flex report does not include daily TWR, so a flow-adjusted return curve cannot be drawn. Enable Breakout by Day in Change in NAV, then refresh the report."],
   ["已载入本机缓存", "Loaded local cache"],
   ["报表刷新中", "Refreshing report"],
   ["报表已是最新", "Report already current"],
   ["已是最新", "Already current"],
   ["报表已更新", "Report updated"],
   ["已缓存", "Cached"],
+  ["缓存时间", "Cached at"],
+  ["TWR 数据不完整", "TWR data incomplete"],
+  ["收益率曲线暂不展示", "Return curve hidden"],
+  ["总计", "Total"],
   ["已实现 + 未实现", "Realized + unrealized"],
   ["Net Asset Value / Cash", "Net Asset Value / Cash"],
   ["Trades summary", "Trades summary"],
@@ -341,10 +351,10 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.12";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.13";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
-const PIE_COLORS = ["#3186f6", "#0b6b5d", "#b57936", "#7c6ee6", "#d85d5d", "#2aa6a1"];
-const POSITION_PIE_COLORS = ["#3186f6", "#0b6b5d", "#b57936", "#7c6ee6", "#d85d5d", "#2aa6a1", "#69a64d", "#bd6aa8"];
+const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
+const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9", "#67e8f9", "#5eead4"];
 const SHARE_IMAGE_FONT = 'Inter, "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif';
 const FLEX_TOKEN_STORAGE_KEY = "ibkr-flex-token";
 const FLEX_QUERY_ID_STORAGE_KEY = "ibkr-flex-query-id";
@@ -352,7 +362,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const SP500_BENCHMARK_URL = "https://sp500-proxy.3368517784.workers.dev";
-const APP_VERSION = "2.1.12";
+const APP_VERSION = "2.1.13";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -797,6 +807,12 @@ function renderMobileBar() {
 
 function renderFlexSyncStatus() {
   if (!state.cacheStatus) return "";
+  const displayStatus = compactFlexSyncStatus();
+  const statusTitle = [
+    state.cacheStatus,
+    state.flexStatus && state.flexStatus !== state.cacheStatus ? state.flexStatus : "",
+    state.cacheLoadedAt ? `${t("cachedAt")}: ${formatDateTime(state.cacheLoadedAt)}` : ""
+  ].filter(Boolean).join("\n");
   const className = [
     "sync-status",
     state.backgroundRefreshBusy ? "is-refreshing" : "",
@@ -804,9 +820,22 @@ function renderFlexSyncStatus() {
   ].filter(Boolean).join(" ");
   const detail = refreshStatusHelpText();
   return `
-    <span class="${className}" title="${escapeAttribute(state.flexStatus || state.cacheStatus)}">${escapeHtml(state.cacheStatus)}</span>
+    <span class="${className}" title="${escapeAttribute(statusTitle)}">${escapeHtml(displayStatus)}</span>
     <span class="sync-help" title="${escapeAttribute(detail)}" aria-label="${escapeAttribute(t("refreshHelp"))}">?</span>
   `;
+}
+
+function compactFlexSyncStatus() {
+  const status = state.cacheStatus || "";
+  const language = state.language === "en" ? "en" : "zh";
+
+  if (/刷新中|Refreshing/i.test(status)) return language === "en" ? "Refreshing" : "刷新中";
+  if (/生成|generating/i.test(status)) return language === "en" ? "Generating" : "生成中";
+  if (/失败|failed|连接|connect/i.test(status)) return language === "en" ? "Refresh failed" : "刷新失败";
+  if (/已是最新|already current/i.test(status)) return language === "en" ? "Current" : "已最新";
+  if (/已更新|updated/i.test(status)) return language === "en" ? "Updated" : "已更新";
+  if (/已载入|已缓存|cache|cached|loaded/i.test(status)) return language === "en" ? "Cached" : "缓存";
+  return status;
 }
 
 function renderDashboardFlexRefreshButton(id, iconOnly = false) {
@@ -887,7 +916,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.1.12" alt="" />
+        <img src="./assets/app-logo.png?v=2.1.13" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -964,7 +993,8 @@ function renderActiveTab() {
 function renderOverview(data) {
   const currency = data.baseCurrency || "USD";
   const totalPL = data.plSummary.total.total;
-  const twr = accountReturnRate(data);
+  const returnStatus = returnDataStatus(data);
+  const twr = returnStatus.isReliable ? returnStatus.returnRate : 0;
   data.nav.rateOfReturn = twr;
   const portfolioAllocation = buildPortfolioAllocation(data);
   return `
@@ -974,7 +1004,7 @@ function renderOverview(data) {
         ${renderKpi("期末净值", formatMoney(data.nav.total, currency), renderDateRange(data), "span-3")}
         ${renderKpi("现金", formatMoney(data.nav.cash, currency), "Net Asset Value / Cash", "span-3")}
         ${renderKpi("总盈亏", formatMoney(totalPL, currency), "已实现 + 未实现", "span-3", totalPL)}
-        ${renderKpi("时间加权收益", formatPercent(data.nav.rateOfReturn), "IBKR TWR", "span-3", data.nav.rateOfReturn)}
+        ${renderKpi("时间加权收益", returnStatus.isReliable ? formatPercent(data.nav.rateOfReturn) : "-", returnStatus.isReliable ? "IBKR TWR" : "TWR 数据不完整", "span-3", returnStatus.isReliable ? data.nav.rateOfReturn : null)}
         ${renderKpi("交易订单", formatNumber(data.tradeSummary.orderCount), `${formatNumber(data.tradeSummary.stockOrders)} 股票 / ${formatNumber(data.tradeSummary.forexOrders)} 外汇`, "span-3")}
         ${renderKpi("当前持仓", formatNumber(data.positions.length), `${formatNumber(data.assetAllocation.length)} 个资产类别`, "span-3")}
         ${renderKpi("识别区块", formatNumber(Object.keys(data.sectionStats).length), "CSV sections", "span-3")}
@@ -991,7 +1021,7 @@ function renderOverview(data) {
         </section>
         <section class="dashboard-card span-7 return-curve-card">
           <div class="card-header"><h2>收益率曲线</h2><span class="pill">${currency}</span></div>
-          ${renderReturnCurve(data, currency, state.benchmark)}
+          ${renderReturnCurve(data, currency, state.benchmark, returnStatus)}
         </section>
         <section class="dashboard-card span-5">
           <div class="card-header"><h2>资产配置占比</h2><span class="pill">${currency}</span></div>
@@ -1367,37 +1397,13 @@ function renderPositionAssetPie(positions, currency, cash = 0) {
   const rows = buildPositionAssetAllocation(positions, cash, currency);
   if (!rows.length) return renderEmpty("暂无持仓市值数据。");
 
-  let cursor = 0;
-  const gradient = rows
-    .map((row, index) => {
-      const start = cursor;
-      const end = cursor + row.weight * 100;
-      cursor = end;
-      return `${POSITION_PIE_COLORS[index % POSITION_PIE_COLORS.length]} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
-    })
-    .join(", ");
-  const total = rows.reduce((sum, row) => sum + row.value, 0);
-
-  return `
-    <div class="position-pie-layout">
-      <div class="asset-pie" style="--position-pie-gradient:${gradient}" role="img" aria-label="持仓资产分布"></div>
-      <div class="position-pie-legend">
-        ${rows.map((row, index) => `
-          <div class="position-pie-row">
-            <span class="position-pie-label">
-              <i style="background:${POSITION_PIE_COLORS[index % POSITION_PIE_COLORS.length]}"></i>
-              ${escapeHtml(row.name)}
-            </span>
-            <span class="position-pie-value">
-              <strong>${formatPercent(row.weight * 100)}</strong>
-              <span>${formatMoney(row.value, currency)}</span>
-            </span>
-          </div>
-        `).join("")}
-        <div class="pie-total">${formatMoney(total, currency)}</div>
-      </div>
-    </div>
-  `;
+  return renderInteractivePie(rows, currency, {
+    colors: POSITION_PIE_COLORS,
+    layoutClass: "position-pie-layout",
+    chartClass: "asset-pie",
+    legendClass: "position-pie-legend",
+    ariaLabel: "持仓资产分布"
+  });
 }
 
 function renderProfitCalendar(rows, month, currency) {
@@ -1586,26 +1592,11 @@ function buildBenchmarkPath(benchmarkRows, width, height, paddingLeft, paddingRi
   ].join("");
 }
 
-function renderReturnCurve(data, currency, benchmark) {
-  const rows = (data.navHistory || [])
-    .filter((row) => Number.isFinite(row.nav) && Number.isFinite(row.returnRate))
-    .slice();
+function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(data)) {
+  const rows = status.rows || [];
 
-  if (rows.length < 2) {
-    return renderEmpty("暂无可展示的收益率曲线。");
-  }
-
-  const flowAdjusted = rows.every((row) => row.flowAdjusted);
-  if (!flowAdjusted) {
-    return `
-      <div class="return-curve-unavailable">
-        <div>
-          <span>整段时间加权收益</span>
-          <strong class="${valueClass(data.nav.rateOfReturn)}">${formatSignedPercent(data.nav.rateOfReturn)}</strong>
-        </div>
-        <p>当前 Flex 报表没有逐日 TWR，无法画出剔除入金影响的收益率曲线。请在 Activity Flex Query 的 <b>Change in NAV</b> 中打开 <b>Breakout by Day</b>，然后重新拉取。</p>
-      </div>
-    `;
+  if (!status.isReliable) {
+    return renderReturnCurveUnavailable(status.message);
   }
 
   const benchmarkRows = buildBenchmarkRows(benchmark, rows);
@@ -1692,6 +1683,76 @@ function renderReturnCurve(data, currency, benchmark) {
       <p class="return-curve-note">按 IBKR 每日 TWR 累乘计算，已剔除入金、出金等外部现金流影响。</p>
     </div>
   `;
+}
+
+function renderReturnCurveUnavailable(message) {
+  return `
+    <div class="return-curve-unavailable">
+      <div>
+        <span>收益率曲线暂不展示</span>
+        <strong>-</strong>
+      </div>
+      <p>${escapeHtml(message || "当前 Flex 报表没有足够的逐日 NAV/TWR 数据，暂不绘制收益率曲线。")}</p>
+    </div>
+  `;
+}
+
+function returnDataStatus(data) {
+  const rows = (data.navHistory || [])
+    .filter((row) => Number.isFinite(row.nav) && Number.isFinite(row.returnRate))
+    .slice();
+  const exposure = totalPortfolioExposure(data);
+  const navTotal = Number(data?.nav?.total);
+
+  if (exposure > 0 && (!Number.isFinite(navTotal) || navTotal <= 0)) {
+    return {
+      isReliable: false,
+      rows,
+      returnRate: 0,
+      message: "当前报表里的 NAV 为 0，但持仓/现金已有数值，说明 Flex Query 的 NAV 数据不完整。请确认已包含 Net Asset Value (NAV) in Base，再刷新报表。"
+    };
+  }
+
+  if (rows.length < 2) {
+    return {
+      isReliable: false,
+      rows,
+      returnRate: 0,
+      message: "当前 Flex 报表没有足够的逐日 NAV/TWR 数据，暂不绘制收益率曲线。"
+    };
+  }
+
+  if (rows.some((row) => !Number.isFinite(row.nav) || row.nav <= 0)) {
+    return {
+      isReliable: false,
+      rows,
+      returnRate: 0,
+      message: "逐日 NAV 数据存在 0 或缺失值，曲线容易失真，暂不绘制。"
+    };
+  }
+
+  if (!rows.every((row) => row.flowAdjusted)) {
+    return {
+      isReliable: false,
+      rows,
+      returnRate: 0,
+      message: "当前 Flex 报表没有逐日 TWR，无法画出剔除入金影响的收益率曲线。请在 Activity Flex Query 的 Change in NAV 中打开 Breakout by Day，然后重新拉取。"
+    };
+  }
+
+  return {
+    isReliable: true,
+    rows,
+    returnRate: rows[rows.length - 1].returnRate,
+    message: ""
+  };
+}
+
+function totalPortfolioExposure(data) {
+  const positions = Array.isArray(data?.positions) ? data.positions : [];
+  const positionValue = positions.reduce((sum, row) => sum + Math.abs(row.value || 0), 0);
+  const cash = Math.max(0, Number(data?.nav?.cash) || 0);
+  return positionValue + cash;
 }
 
 function buildReturnAxis(minValue, maxValue) {
@@ -1820,30 +1881,86 @@ function renderAllocationPie(rows, currency) {
   const topRows = sourceRows.slice(0, 5);
   const otherValue = sourceRows.slice(5).reduce((sum, row) => sum + Math.abs(row.value), 0);
   const pieRows = otherValue > 0 ? [...topRows, { name: "其他", value: otherValue, weight: otherValue / total }] : topRows;
-  let cursor = 0;
-  const segments = pieRows.map((row, index) => {
-    const percent = row.weight || Math.abs(row.value) / total;
-    const start = cursor;
-    const end = cursor + percent * 100;
-    cursor = end;
-    return `${PIE_COLORS[index % PIE_COLORS.length]} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+  return renderInteractivePie(pieRows, currency, {
+    colors: PIE_COLORS,
+    layoutClass: "allocation-pie",
+    chartClass: "pie-visual",
+    legendClass: "pie-legend",
+    ariaLabel: "资产配置"
   });
+}
+
+function renderInteractivePie(rows, currency, options = {}) {
+  const sourceRows = (rows || []).filter((row) => Math.abs(row.value) > 0);
+  if (!sourceRows.length) return renderEmpty("暂无可展示的数据。");
+
+  const colors = options.colors || PIE_COLORS;
+  const layoutClass = options.layoutClass || "allocation-pie";
+  const chartClass = options.chartClass || "pie-visual";
+  const legendClass = options.legendClass || "pie-legend";
+  const ariaLabel = options.ariaLabel || "资产配置";
+  const total = sourceRows.reduce((sum, row) => sum + Math.abs(row.value), 0) || 1;
+  let cursor = 0;
+
+  const slices = sourceRows.map((row, index) => {
+    const value = Math.abs(row.value);
+    const percent = row.weight || value / total;
+    const percentValue = Math.max(0.001, percent * 100);
+    const label = displayGroup(row.name);
+    const amount = formatMoney(value, currency);
+    const percentLabel = formatPercent(percent * 100);
+    const tooltip = `${label}: ${amount} · ${percentLabel}`;
+    const dashOffset = -cursor;
+    cursor += percentValue;
+
+    return `
+      <circle class="pie-slice"
+        cx="100"
+        cy="100"
+        r="72"
+        pathLength="100"
+        fill="none"
+        stroke="${colors[index % colors.length]}"
+        stroke-dasharray="${percentValue.toFixed(4)} ${(100 - percentValue).toFixed(4)}"
+        stroke-dashoffset="${dashOffset.toFixed(4)}"
+        tabindex="0"
+        role="img"
+        aria-label="${escapeAttribute(tooltip)}"
+        data-pie-tooltip="${escapeAttribute(tooltip)}">
+        <title>${escapeHtml(tooltip)}</title>
+      </circle>
+    `;
+  }).join("");
 
   return `
-    <div class="allocation-pie">
-      <div class="pie-visual" style="--pie-gradient:${segments.join(", ")};" aria-label="资产配置">
-        <span>${formatPercent(100)}</span>
-      </div>
-      <div class="pie-legend">
-        ${pieRows.map((row, index) => {
-          const percent = (row.weight || Math.abs(row.value) / total) * 100;
+    <div class="${escapeAttribute(layoutClass)}">
+      <svg class="${escapeAttribute(chartClass)}" viewBox="0 0 200 200" role="img" aria-label="${escapeAttribute(ariaLabel)}">
+        <circle class="pie-ring-bg" cx="100" cy="100" r="72" pathLength="100"></circle>
+        <g transform="rotate(-90 100 100)">
+          ${slices}
+        </g>
+        <circle class="pie-hole" cx="100" cy="100" r="45"></circle>
+        <text class="pie-center-main" x="100" y="96" text-anchor="middle">${escapeHtml(formatCompactMoney(total, currency))}</text>
+        <text class="pie-center-sub" x="100" y="116" text-anchor="middle">${state.language === "en" ? "Total" : "总计"}</text>
+      </svg>
+      <div class="${escapeAttribute(legendClass)}">
+        ${sourceRows.map((row, index) => {
+          const value = Math.abs(row.value);
+          const percent = (row.weight || value / total) * 100;
+          const label = displayGroup(row.name);
+          const amount = formatMoney(value, currency);
+          const percentLabel = formatPercent(percent);
+          const tooltip = `${label}: ${amount} · ${percentLabel}`;
           return `
-            <div class="pie-legend-row">
+            <div class="pie-legend-row" data-pie-tooltip="${escapeAttribute(tooltip)}">
               <span class="pie-label">
-                <i style="background:${PIE_COLORS[index % PIE_COLORS.length]}"></i>
-                ${escapeHtml(displayGroup(row.name))}
+                <i style="background:${colors[index % colors.length]}"></i>
+                ${escapeHtml(label)}
               </span>
-              <span class="numeric mono">${formatPercent(percent)}</span>
+              <span class="pie-value">
+                <strong>${escapeHtml(percentLabel)}</strong>
+                <span>${escapeHtml(amount)}</span>
+              </span>
             </div>
           `;
         }).join("")}
@@ -2009,6 +2126,7 @@ function bindDashboardEvents() {
   document.querySelector("#dashboardUpdateCheckButton")?.addEventListener("click", () => checkForUpdates({ manual: true }));
   document.querySelector("#dashboardFlexRefreshButton")?.addEventListener("click", refreshFlexReportFromDashboard);
   document.querySelector("#mobileFlexRefreshButton")?.addEventListener("click", refreshFlexReportFromDashboard);
+  bindPieTooltips();
   document.querySelectorAll("[data-update-download]").forEach((button) => {
     button.addEventListener("click", openUpdateDownload);
   });
@@ -2059,6 +2177,53 @@ function bindDashboardEvents() {
     state.search = "";
     render();
     document.querySelector("#globalSearch")?.focus();
+  });
+}
+
+function bindPieTooltips() {
+  document.querySelectorAll(".chart-tooltip").forEach((node) => node.remove());
+  const targets = document.querySelectorAll("[data-pie-tooltip]");
+  if (!targets.length) return;
+
+  const tooltip = document.createElement("div");
+  tooltip.className = "chart-tooltip";
+  document.body.appendChild(tooltip);
+
+  const positionTooltip = (event) => {
+    const margin = 14;
+    const tooltipWidth = tooltip.offsetWidth || 180;
+    const tooltipHeight = tooltip.offsetHeight || 42;
+    const left = Math.min(window.innerWidth - tooltipWidth - margin, event.clientX + margin);
+    const top = Math.min(window.innerHeight - tooltipHeight - margin, event.clientY + margin);
+    tooltip.style.transform = `translate3d(${Math.max(margin, left)}px, ${Math.max(margin, top)}px, 0)`;
+  };
+
+  const showTooltip = (event) => {
+    const text = event.currentTarget.dataset.pieTooltip || "";
+    if (!text) return;
+    tooltip.textContent = text;
+    tooltip.classList.add("is-visible");
+    positionTooltip(event);
+  };
+
+  const hideTooltip = () => {
+    tooltip.classList.remove("is-visible");
+    tooltip.style.transform = "translate3d(-9999px, -9999px, 0)";
+  };
+
+  targets.forEach((target) => {
+    target.addEventListener("mouseenter", showTooltip);
+    target.addEventListener("mousemove", positionTooltip);
+    target.addEventListener("mouseleave", hideTooltip);
+    target.addEventListener("focus", (event) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      showTooltip({
+        currentTarget: event.currentTarget,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2
+      });
+    });
+    target.addEventListener("blur", hideTooltip);
   });
 }
 
@@ -2588,7 +2753,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.12");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.13");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -3392,7 +3557,7 @@ function renderDateRange(data) {
 }
 
 function displayGroup(name) {
-  const labels = {
+  const zhLabels = {
     Stocks: "股票",
     "Equity and Index Options": "期权",
     Futures: "期货",
@@ -3402,6 +3567,18 @@ function displayGroup(name) {
     Long: "多头",
     Short: "空头"
   };
+  const enLabels = {
+    Stocks: "Stocks",
+    "Equity and Index Options": "Options",
+    Options: "Options",
+    Futures: "Futures",
+    "Futures Options": "Futures Options",
+    Forex: "Forex",
+    Cash: "Cash",
+    Long: "Long",
+    Short: "Short"
+  };
+  const labels = state.language === "en" ? enLabels : zhLabels;
   return labels[name] || name || "Unknown";
 }
 
@@ -3434,12 +3611,8 @@ function icon(name) {
 }
 
 function accountReturnRate(data) {
-  const rows = Array.isArray(data?.navHistory) ? data.navHistory : [];
-  const twrRows = rows.filter((row) => row.flowAdjusted && Number.isFinite(row.returnRate));
-  if (twrRows.length) {
-    return twrRows[twrRows.length - 1].returnRate;
-  }
-  return Number.isFinite(data?.nav?.rateOfReturn) ? data.nav.rateOfReturn : 0;
+  const status = returnDataStatus(data);
+  return status.isReliable ? status.returnRate : 0;
 }
 
 function valueClass(value) {
@@ -3480,6 +3653,25 @@ function formatMoney(value, currency = "USD") {
     }).format(amount);
   } catch (error) {
     return `${currency} ${formatNumber(amount, 2)}`;
+  }
+}
+
+function formatCompactMoney(value, currency = "USD") {
+  const amount = Number.isFinite(value) ? value : 0;
+  if (Math.abs(amount) < 100000) return formatMoney(amount, currency);
+
+  try {
+    return new Intl.NumberFormat(numberLocale(), {
+      style: "currency",
+      currency,
+      notation: "compact",
+      maximumFractionDigits: 2
+    }).format(amount);
+  } catch (error) {
+    return `${currency} ${new Intl.NumberFormat(numberLocale(), {
+      notation: "compact",
+      maximumFractionDigits: 2
+    }).format(amount)}`;
   }
 }
 
