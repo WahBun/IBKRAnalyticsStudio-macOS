@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.1.13";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.13";
-import { parseIbkrReport } from "./parser.js?v=2.1.13";
+import { decodeReportFile } from "./encoding.js?v=2.1.14";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.14";
+import { parseIbkrReport } from "./parser.js?v=2.1.14";
 
 const app = document.querySelector("#app");
 
@@ -351,7 +351,7 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.13";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.14";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9", "#67e8f9", "#5eead4"];
@@ -362,7 +362,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const SP500_BENCHMARK_URL = "https://sp500-proxy.3368517784.workers.dev";
-const APP_VERSION = "2.1.13";
+const APP_VERSION = "2.1.14";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -916,7 +916,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.1.13" alt="" />
+        <img src="./assets/app-logo.png?v=2.1.14" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1886,7 +1886,8 @@ function renderAllocationPie(rows, currency) {
     layoutClass: "allocation-pie",
     chartClass: "pie-visual",
     legendClass: "pie-legend",
-    ariaLabel: "资产配置"
+    ariaLabel: "资产配置",
+    centerLabel: formatPercent(100)
   });
 }
 
@@ -1899,10 +1900,12 @@ function renderInteractivePie(rows, currency, options = {}) {
   const chartClass = options.chartClass || "pie-visual";
   const legendClass = options.legendClass || "pie-legend";
   const ariaLabel = options.ariaLabel || "资产配置";
+  const centerLabel = options.centerLabel || "";
   const total = sourceRows.reduce((sum, row) => sum + Math.abs(row.value), 0) || 1;
   let cursor = 0;
 
-  const slices = sourceRows.map((row, index) => {
+  const segments = [];
+  const hitSlices = sourceRows.map((row, index) => {
     const value = Math.abs(row.value);
     const percent = row.weight || value / total;
     const percentValue = Math.max(0.001, percent * 100);
@@ -1910,22 +1913,22 @@ function renderInteractivePie(rows, currency, options = {}) {
     const amount = formatMoney(value, currency);
     const percentLabel = formatPercent(percent * 100);
     const tooltip = `${label}: ${amount} · ${percentLabel}`;
+    const start = cursor;
+    const end = cursor + percentValue;
     const dashOffset = -cursor;
     cursor += percentValue;
+    segments.push(`${colors[index % colors.length]} ${start.toFixed(2)}% ${end.toFixed(2)}%`);
 
     return `
-      <circle class="pie-slice"
+      <circle class="pie-hit-slice"
         cx="100"
         cy="100"
-        r="72"
+        r="50"
         pathLength="100"
         fill="none"
-        stroke="${colors[index % colors.length]}"
+        stroke="transparent"
         stroke-dasharray="${percentValue.toFixed(4)} ${(100 - percentValue).toFixed(4)}"
         stroke-dashoffset="${dashOffset.toFixed(4)}"
-        tabindex="0"
-        role="img"
-        aria-label="${escapeAttribute(tooltip)}"
         data-pie-tooltip="${escapeAttribute(tooltip)}">
         <title>${escapeHtml(tooltip)}</title>
       </circle>
@@ -1934,15 +1937,14 @@ function renderInteractivePie(rows, currency, options = {}) {
 
   return `
     <div class="${escapeAttribute(layoutClass)}">
-      <svg class="${escapeAttribute(chartClass)}" viewBox="0 0 200 200" role="img" aria-label="${escapeAttribute(ariaLabel)}">
-        <circle class="pie-ring-bg" cx="100" cy="100" r="72" pathLength="100"></circle>
-        <g transform="rotate(-90 100 100)">
-          ${slices}
-        </g>
-        <circle class="pie-hole" cx="100" cy="100" r="45"></circle>
-        <text class="pie-center-main" x="100" y="96" text-anchor="middle">${escapeHtml(formatCompactMoney(total, currency))}</text>
-        <text class="pie-center-sub" x="100" y="116" text-anchor="middle">${state.language === "en" ? "Total" : "总计"}</text>
-      </svg>
+      <div class="${escapeAttribute(chartClass)}" style="--pie-gradient:${segments.join(", ")};" role="img" aria-label="${escapeAttribute(ariaLabel)}">
+        ${centerLabel ? `<span>${escapeHtml(centerLabel)}</span>` : ""}
+        <svg class="pie-hit-map" viewBox="0 0 200 200" aria-hidden="true">
+          <g transform="rotate(-90 100 100)">
+            ${hitSlices}
+          </g>
+        </svg>
+      </div>
       <div class="${escapeAttribute(legendClass)}">
         ${sourceRows.map((row, index) => {
           const value = Math.abs(row.value);
@@ -2753,7 +2755,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.13");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.14");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {

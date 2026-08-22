@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.14-macos.1
+
+Pie chart hotfix release.
+
+- Restored the original conic pie chart visuals and kept hover tooltips as a transparent overlay.
+- Fixed the pie chart shrinkage caused by visible SVG rings inheriting global icon sizing.
+- Removed the left accent stripe from the featured Total P/L card.
+
 ## v2.1.13-macos.1
 
 Overview polish release.
