@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.1.10";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.10";
-import { parseIbkrReport } from "./parser.js?v=2.1.10";
+import { decodeReportFile } from "./encoding.js?v=2.1.11";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.11";
+import { parseIbkrReport } from "./parser.js?v=2.1.11";
 
 const app = document.querySelector("#app");
 
@@ -324,7 +324,7 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.10";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.11";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#3186f6", "#0b6b5d", "#b57936", "#7c6ee6", "#d85d5d", "#2aa6a1"];
 const POSITION_PIE_COLORS = ["#3186f6", "#0b6b5d", "#b57936", "#7c6ee6", "#d85d5d", "#2aa6a1", "#69a64d", "#bd6aa8"];
@@ -335,12 +335,13 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const SP500_BENCHMARK_URL = "https://sp500-proxy.3368517784.workers.dev";
-const APP_VERSION = "2.1.10";
+const APP_VERSION = "2.1.11";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
 let flexCacheDbPromise = null;
 let benchmarkRequestId = 0;
+let searchRenderTimer = 0;
 
 function normalizeFlexToken(value) {
   return String(value || "")
@@ -375,6 +376,7 @@ const state = {
   updateError: "",
   backgroundRefreshBusy: false,
   backgroundRefreshStarted: false,
+  reportFingerprint: "",
   autoSampleStarted: false,
   flexGuideOpen: false,
   shareOpen: false,
@@ -840,7 +842,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.1.10" alt="" />
+        <img src="./assets/app-logo.png?v=2.1.11" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1996,10 +1998,7 @@ function bindDashboardEvents() {
   const searchInput = document.querySelector("#globalSearch");
   searchInput?.addEventListener("input", () => {
     state.search = searchInput.value;
-    render();
-    const nextSearch = document.querySelector("#globalSearch");
-    nextSearch?.focus();
-    nextSearch?.setSelectionRange(nextSearch.value.length, nextSearch.value.length);
+    scheduleSearchRender();
   });
 
   document.querySelector("#globalSearchClear")?.addEventListener("click", () => {
@@ -2031,6 +2030,20 @@ function toggleTheme() {
   localStorage.setItem("ibkr-analytics-theme", state.theme);
   applyTheme();
   render();
+}
+
+function scheduleSearchRender() {
+  if (searchRenderTimer) {
+    window.clearTimeout(searchRenderTimer);
+  }
+
+  searchRenderTimer = window.setTimeout(() => {
+    searchRenderTimer = 0;
+    render();
+    const nextSearch = document.querySelector("#globalSearch");
+    nextSearch?.focus();
+    nextSearch?.setSelectionRange(nextSearch.value.length, nextSearch.value.length);
+  }, 80);
 }
 
 function applyTheme() {
@@ -2365,6 +2378,23 @@ function requestFlexReport({ background = false } = {}) {
 
     const fetchedAt = new Date().toISOString();
     const sourceName = `ibkr-flex-${message.referenceCode || "report"}.csv`;
+    const reportFingerprint = fingerprintReportText(reportText);
+
+    if (state.data && state.reportFingerprint === reportFingerprint) {
+      state.flexStatus = "IBKR Flex report is already current.";
+      state.cacheStatus = background ? `报表已是最新 ${formatDateTime(fetchedAt)}` : `已是最新 ${formatDateTime(fetchedAt)}`;
+      await writeCachedFlexReport({
+        text: reportText,
+        sourceName,
+        fetchedAt,
+        queryId: state.flexQueryId.trim(),
+        referenceCode: message.referenceCode || "",
+        fingerprint: reportFingerprint
+      });
+      renderDashboard();
+      return;
+    }
+
     state.flexStatus = "IBKR Flex report downloaded. Parsing...";
     const parsed = parseText(reportText, sourceName, {
       preserveView: background,
@@ -2379,7 +2409,8 @@ function requestFlexReport({ background = false } = {}) {
         sourceName,
         fetchedAt,
         queryId: state.flexQueryId.trim(),
-        referenceCode: message.referenceCode || ""
+        referenceCode: message.referenceCode || "",
+        fingerprint: reportFingerprint
       });
     }
   };
@@ -2434,7 +2465,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.10");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.11");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -2485,6 +2516,7 @@ function parseText(text, sourceName, options = {}) {
     }
     state.data = parsed;
     state.sourceName = sourceName || "";
+    state.reportFingerprint = fingerprintReportText(cleanText);
     state.search = options.preserveView ? previousSearch : "";
     state.error = "";
     state.activeTab = options.preserveView ? previousActiveTab : options.defaultTab || "performance";
@@ -2512,6 +2544,7 @@ function resetReport() {
   state.error = "";
   state.search = "";
   state.sourceName = "";
+  state.reportFingerprint = "";
   state.benchmark = null;
   renderUpload();
 }
@@ -3174,6 +3207,18 @@ function dailyTradeSearchMatch(row) {
     formatDate(row.date),
     formatDateTime(row.dateTime)
   ]);
+}
+
+function fingerprintReportText(text) {
+  const cleanText = String(text || "").trim();
+  let hash = 2166136261;
+
+  for (let index = 0; index < cleanText.length; index += 1) {
+    hash ^= cleanText.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return `${cleanText.length}:${hash >>> 0}`;
 }
 
 function summarizeDailyTradeRows(rows) {

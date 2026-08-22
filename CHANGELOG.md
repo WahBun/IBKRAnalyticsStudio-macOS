@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.11-macos.1
+
+Refresh performance release.
+
+- Poll IBKR Flex reports sooner while a statement is still generating, reducing avoidable wait time on successful refreshes.
+- Skip full parsing and dashboard rerendering when a background refresh returns the same report content already shown.
+- Debounce dashboard search rendering so typing no longer forces a full rerender for every keystroke.
+
 ## v2.1.10-macos.1
 
 UI bugfix release.
