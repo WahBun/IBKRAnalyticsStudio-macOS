@@ -1630,9 +1630,15 @@ tbody tr:hover {
   color: var(--muted);
 }
 
+.positions-table th:nth-child(7),
+.positions-table td:nth-child(7) {
+  text-align: center;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 22px;
   padding: 2px 7px;
   border: 1px solid var(--line);
@@ -2220,6 +2226,15 @@ tbody tr:hover {
   color: var(--muted);
   font-size: 13px;
   text-align: center;
+}
+
+.position-pie-legend .pie-total {
+  order: -1;
+  grid-column: 1 / -1;
+  margin: 0 0 4px;
+  color: var(--ink);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 
 .position-chart-card {

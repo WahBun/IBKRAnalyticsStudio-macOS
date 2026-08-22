@@ -1054,7 +1054,7 @@ function renderPerformance(data) {
           ${renderPlDistribution(data)}
         </section>
         <section class="table-card span-6">
-          <div class="table-header"><h2>主要贡献者</h2><span class="pill">${formatNumber(data.tickerPL.length)} tickers</span></div>
+          <div class="table-header"><h2>主要贡献者</h2></div>
           ${renderTopContributors(data, currency)}
         </section>
         <section class="dashboard-card chart-card span-12">
@@ -1342,7 +1342,7 @@ function renderPositionsTable(rows, currency) {
     `<span class="${valueClass(row.dividends)}">${formatMoney(row.dividends || 0, row.currency || currency)}</span>`,
     `<span class="${valueClass(row.unrealizedPL)}">${signedMoney(row.unrealizedPL, row.currency || currency)}</span>`
   ]);
-  return renderSimpleTable(["标的", "资产", "方向", "数量", "平均成本", "市值", "成本", "股息", "未实现"], tableRows, [false, false, false, true, true, true, true, true, true], true);
+  return renderSimpleTable(["标的", "资产", "方向", "数量", "平均成本", "市值", "成本", "股息", "未实现"], tableRows, [false, false, false, true, true, true, true, true, true], true, "positions-table");
 }
 
 function positionUnitCost(row) {
@@ -1494,10 +1494,11 @@ function renderDailyTradeTable(rows, currency, emptyMessage = "当前月份没�
   return renderSimpleTable(["成交时间", "股票代码", "方向", "资产", "数量", "成交价", "成交金额", "佣金", "已实现盈亏"], tableRows, [false, false, false, false, true, true, true, true, true], true);
 }
 
-function renderSimpleTable(headers, rows, numericColumns = [], allowHtml = false) {
+function renderSimpleTable(headers, rows, numericColumns = [], allowHtml = false, tableClass = "") {
+  const classAttribute = tableClass ? ` class="${escapeAttribute(tableClass)}"` : "";
   return `
     <div class="table-scroll">
-      <table>
+      <table${classAttribute}>
         <thead>
           <tr>${headers.map((header, index) => `<th class="${numericColumns[index] ? "numeric" : ""}">${escapeHtml(header)}</th>`).join("")}</tr>
         </thead>
