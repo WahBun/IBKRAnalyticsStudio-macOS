@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_PATH="$ROOT_DIR/src-tauri/target/release/bundle/macos/IBKR Analytics Studio.app"
 OUTPUT_DIR="$ROOT_DIR/outputs"
 ARCH="${ARCH:-$(uname -m)}"
-DMG_PATH="$OUTPUT_DIR/IBKR-Analytics-Studio-2.1.14-macos-${ARCH}.dmg"
+DMG_PATH="$OUTPUT_DIR/IBKR-Analytics-Studio-2.1.15-macos-${ARCH}.dmg"
 STAGING_DIR="${TMPDIR:-/tmp}/ibkr-analytics-studio-dmg"
 
 if [[ ! -d "$APP_PATH" ]]; then

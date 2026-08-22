@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.1.14";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.14";
-import { parseIbkrReport } from "./parser.js?v=2.1.14";
+import { decodeReportFile } from "./encoding.js?v=2.1.15";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.15";
+import { parseIbkrReport } from "./parser.js?v=2.1.15";
 
 const app = document.querySelector("#app");
 
@@ -351,7 +351,7 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.14";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.15";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9", "#67e8f9", "#5eead4"];
@@ -362,7 +362,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const SP500_BENCHMARK_URL = "https://sp500-proxy.3368517784.workers.dev";
-const APP_VERSION = "2.1.14";
+const APP_VERSION = "2.1.15";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -770,7 +770,7 @@ function renderSideNav() {
   return `
     <aside class="side-nav">
       <div class="side-brand">
-        ${renderBrand("IBKR Analytics", "Version 2.1")}
+        ${renderBrand("IBKR Analytics", `Version ${APP_VERSION}`)}
       </div>
       <nav class="side-nav-list" aria-label="${t("reportNav")}">
         ${tabs.map((tab) => renderNavButton(tab)).join("")}
@@ -916,7 +916,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.1.14" alt="" />
+        <img src="./assets/app-logo.png?v=2.1.15" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -2755,7 +2755,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.14");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.15");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {

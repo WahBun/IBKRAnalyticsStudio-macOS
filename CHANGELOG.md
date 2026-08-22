@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.15-macos.1
+
+Icon and allocation legend polish release.
+
+- Replaced the app icon with the selected E2 cyan chart mark and refreshed macOS icon assets.
+- Updated the in-app brand mark to use the same rounded icon without black cropping.
+- Adjusted pie chart legends so symbols stay on top and percentage / amount values sit underneath.
+
 ## v2.1.14-macos.1
 
 Pie chart hotfix release.

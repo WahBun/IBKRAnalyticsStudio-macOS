@@ -153,15 +153,15 @@ svg {
   place-items: center;
   width: 34px;
   height: 34px;
-  border-radius: var(--radius-sm);
+  border-radius: 9px;
   overflow: hidden;
-  background: #000000;
+  background: transparent;
 }
 
 .brand-mark img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .brand-copy {
@@ -2157,11 +2157,12 @@ tbody tr:hover {
 
 .pie-legend-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(90px, auto);
-  align-items: center;
-  gap: 18px;
-  min-height: 44px;
-  padding: 7px 10px;
+  grid-template-columns: 1fr;
+  align-content: center;
+  align-items: start;
+  gap: 5px;
+  min-height: 56px;
+  padding: 9px 10px;
   border-radius: var(--radius);
   background: var(--surface-low);
   color: var(--muted);
@@ -2178,6 +2179,9 @@ tbody tr:hover {
   align-items: center;
   gap: 9px;
   min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 16px;
+  font-weight: 800;
 }
 
 .pie-label i {
@@ -2190,10 +2194,11 @@ tbody tr:hover {
 
 .pie-value {
   display: grid;
-  justify-items: end;
+  justify-items: start;
   gap: 2px;
   color: var(--muted);
-  text-align: right;
+  padding-left: 19px;
+  text-align: left;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2246,7 +2251,7 @@ tbody tr:hover {
 }
 
 .position-pie-legend .pie-legend-row {
-  min-height: 48px;
+  min-height: 58px;
 }
 
 .chart-tooltip {
@@ -2567,10 +2572,6 @@ tbody tr:hover {
 
   .daily-stat-grid {
     grid-template-columns: 1fr;
-  }
-
-  .pie-legend-row {
-    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .search-input {

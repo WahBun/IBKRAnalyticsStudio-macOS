@@ -1,14 +1,17 @@
-<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="IBKR Statement Parser icon">
-  <rect width="512" height="512" rx="96" fill="#F4F6F1"/>
-  <g transform="translate(18 20)">
-    <rect x="96" y="72" width="236" height="324" rx="28" fill="#FFFFFF" stroke="#1E2724" stroke-width="24"/>
-    <path d="M268 72V154C268 170.569 281.431 184 298 184H332" stroke="#1E2724" stroke-width="24" stroke-linecap="round"/>
-    <path d="M142 244H250" stroke="#BBC5BE" stroke-width="22" stroke-linecap="round"/>
-    <path d="M142 300H216" stroke="#BBC5BE" stroke-width="22" stroke-linecap="round"/>
-    <path d="M142 356H192" stroke="#BBC5BE" stroke-width="22" stroke-linecap="round"/>
-    <circle cx="310" cy="318" r="78" fill="#FFFFFF" stroke="#0B6B5D" stroke-width="24"/>
-    <path d="M366 374L426 434" stroke="#0B6B5D" stroke-width="28" stroke-linecap="round"/>
-    <path d="M262 322L292 292L316 315L358 270" stroke="#0B6B5D" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="358" cy="270" r="14" fill="#B57936"/>
-  </g>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="IBKR Analytics Studio icon">
+  <defs>
+    <linearGradient id="bg" x1="72" y1="72" x2="440" y2="440" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E6FFFB"/>
+      <stop offset="1" stop-color="#BAE6FD"/>
+    </linearGradient>
+    <linearGradient id="trend" x1="146" y1="326" x2="422" y2="154" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#2DD4BF"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <rect x="14" y="14" width="484" height="484" rx="108" stroke="#FFFFFF" stroke-opacity="0.62" stroke-width="8"/>
+  <path d="M134 400V112H438" stroke="#172033" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M198 400V294M278 400V212M358 400V262" stroke="#64748B" stroke-width="32" stroke-linecap="round"/>
+  <path d="M154 330L238 234L314 288L422 144" stroke="url(#trend)" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

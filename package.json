@@ -1,6 +1,6 @@
 {
   "name": "ibkr-analytics-studio",
-  "version": "2.1.14",
+  "version": "2.1.15",
   "private": true,
   "license": "MIT",
   "type": "module",

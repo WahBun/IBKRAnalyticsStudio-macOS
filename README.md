@@ -11,7 +11,7 @@
 Releases 推荐上传这个文件给普通 macOS 用户：
 
 ```text
-IBKR-Analytics-Studio-2.1.14-macos-arm64.dmg
+IBKR-Analytics-Studio-2.1.15-macos-arm64.dmg
 ```
 
 安装方式：
@@ -276,7 +276,7 @@ npm run tauri:dmg
 输出位置：
 
 ```text
-outputs/IBKR-Analytics-Studio-2.1.14-macos-arm64.dmg
+outputs/IBKR-Analytics-Studio-2.1.15-macos-arm64.dmg
 ```
 
 ### Flex API 和 IB Gateway 的区别
