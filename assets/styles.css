@@ -1013,6 +1013,33 @@ svg {
   background: var(--positive-soft);
 }
 
+.sync-status.is-warning {
+  border-color: color-mix(in srgb, var(--negative) 30%, var(--line));
+  color: var(--negative);
+  background: var(--negative-soft);
+}
+
+.sync-help {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  background: var(--surface-low);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 900;
+  cursor: help;
+}
+
+.sync-help:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
 .app-bar-actions {
   display: flex;
   align-items: center;

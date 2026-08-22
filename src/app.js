@@ -53,8 +53,11 @@ const copy = {
     exportJson: "导出 JSON",
     shareImage: "生成分享图",
     replaceFile: "更换文件",
+    refreshReport: "刷新报表",
+    refreshingReport: "刷新中...",
     searchPlaceholder: "搜索代码或标签...",
     clearSearch: "清空搜索",
+    refreshHelp: "刷新状态说明",
     baseCurrency: "基础货币",
     account: "账户",
     unknownAccount: "未识别账户",
@@ -129,8 +132,11 @@ const copy = {
     exportJson: "Export JSON",
     shareImage: "Share image",
     replaceFile: "Replace file",
+    refreshReport: "Refresh report",
+    refreshingReport: "Refreshing...",
     searchPlaceholder: "Search symbols or tags...",
     clearSearch: "Clear search",
+    refreshHelp: "Refresh status help",
     baseCurrency: "Base currency",
     account: "Account",
     unknownAccount: "Unknown account",
@@ -182,8 +188,12 @@ const ENGLISH_UI_REPLACEMENTS = [
   ["示例文件读取失败，请确认通过本地服务打开项目。", "Failed to read the sample file. Make sure the project is opened through the local server."],
   ["没有可解析的内容。", "No parseable content."],
   ["报表刷新失败，继续显示缓存", "Report refresh failed, showing cached report"],
+  ["IBKR 仍在生成报表，显示缓存", "IBKR is still generating the report, showing cached report"],
+  ["报表刷新连接失败，显示缓存", "Report refresh connection failed, showing cached report"],
   ["已载入本机缓存", "Loaded local cache"],
   ["报表刷新中", "Refreshing report"],
+  ["报表已是最新", "Report already current"],
+  ["已是最新", "Already current"],
   ["报表已更新", "Report updated"],
   ["已缓存", "Cached"],
   ["已实现 + 未实现", "Realized + unrealized"],
@@ -712,6 +722,7 @@ function renderDashboard() {
             ${renderFlexSyncStatus()}
           </div>
           <div class="app-bar-actions">
+            ${renderDashboardFlexRefreshButton("dashboardFlexRefreshButton", false)}
             <label class="search-wrap">
               ${icon("search")}
               <input class="search-input" id="globalSearch" type="search" value="${escapeAttribute(state.search)}" placeholder="${t("searchPlaceholder")}" />
@@ -763,6 +774,7 @@ function renderMobileBar() {
       <div class="mobile-bar-main">
         ${renderBrand("IBKR Analytics", t("localReport"))}
         <div class="top-actions">
+          ${renderDashboardFlexRefreshButton("mobileFlexRefreshButton", true)}
           ${renderLanguageSwitch()}
           <button class="icon-button" id="mobileExportButton" type="button" title="${t("exportJson")}" aria-label="${t("exportJson")}">${icon("download")}</button>
           <button class="icon-button" id="mobileShareButton" type="button" title="${t("shareImage")}" aria-label="${t("shareImage")}">${icon("share")}</button>
@@ -778,7 +790,32 @@ function renderMobileBar() {
 
 function renderFlexSyncStatus() {
   if (!state.cacheStatus) return "";
-  return `<span class="sync-status ${state.backgroundRefreshBusy ? "is-refreshing" : ""}">${escapeHtml(state.cacheStatus)}</span>`;
+  const className = [
+    "sync-status",
+    state.backgroundRefreshBusy ? "is-refreshing" : "",
+    /失败|生成|failed|generating/i.test(state.cacheStatus) ? "is-warning" : ""
+  ].filter(Boolean).join(" ");
+  const detail = refreshStatusHelpText();
+  return `
+    <span class="${className}" title="${escapeAttribute(state.flexStatus || state.cacheStatus)}">${escapeHtml(state.cacheStatus)}</span>
+    <span class="sync-help" title="${escapeAttribute(detail)}" aria-label="${escapeAttribute(t("refreshHelp"))}">?</span>
+  `;
+}
+
+function renderDashboardFlexRefreshButton(id, iconOnly = false) {
+  if (!canRefreshFlexFromDashboard()) return "";
+  const label = state.backgroundRefreshBusy ? t("refreshingReport") : t("refreshReport");
+  const className = iconOnly ? "icon-button" : "secondary-button dashboard-refresh-button";
+  return `<button class="${className}" id="${id}" type="button" ${state.backgroundRefreshBusy ? "disabled" : ""} title="${escapeAttribute(label)}" aria-label="${escapeAttribute(label)}">${icon("reset")}${iconOnly ? "" : label}</button>`;
+}
+
+function canRefreshFlexFromDashboard() {
+  return Boolean(
+    state.data &&
+    canUseNativeFlex() &&
+    state.flexToken.trim() &&
+    state.flexQueryId.trim()
+  );
 }
 
 function renderUpdateNotice() {
@@ -1955,6 +1992,8 @@ function bindDashboardEvents() {
   document.querySelector("#mobileShareButton")?.addEventListener("click", openShareDialog);
   document.querySelector("#mobileThemeToggle")?.addEventListener("click", toggleTheme);
   document.querySelector("#dashboardUpdateCheckButton")?.addEventListener("click", () => checkForUpdates({ manual: true }));
+  document.querySelector("#dashboardFlexRefreshButton")?.addEventListener("click", refreshFlexReportFromDashboard);
+  document.querySelector("#mobileFlexRefreshButton")?.addEventListener("click", refreshFlexReportFromDashboard);
   document.querySelectorAll("[data-update-download]").forEach((button) => {
     button.addEventListener("click", openUpdateDownload);
   });
@@ -2309,10 +2348,21 @@ function fetchFlexReport() {
   requestFlexReport({ background: false });
 }
 
+function refreshFlexReportFromDashboard() {
+  requestFlexReport({ background: true, manual: true });
+}
+
 function requestFlexReport({ background = false } = {}) {
+  if (state.flexBusy || state.backgroundRefreshBusy) return;
+
   if (!canUseNativeFlex()) {
     state.flexStatus = "IBKR Flex API is available only in the desktop app.";
-    if (!background) renderUpload();
+    if (background && state.data) {
+      state.cacheStatus = "报表刷新失败，继续显示缓存";
+      renderDashboard();
+    } else {
+      renderUpload();
+    }
     return;
   }
 
@@ -2321,7 +2371,12 @@ function requestFlexReport({ background = false } = {}) {
 
   if (!state.flexToken.trim() || !state.flexQueryId.trim()) {
     state.flexStatus = "Enter both Flex Web Service Token and Query ID.";
-    if (!background) renderUpload();
+    if (background && state.data) {
+      state.cacheStatus = "报表刷新失败，继续显示缓存";
+      renderDashboard();
+    } else {
+      renderUpload();
+    }
     return;
   }
 
@@ -2345,7 +2400,7 @@ function requestFlexReport({ background = false } = {}) {
     if (!message.ok) {
       state.flexStatus = message.error || "IBKR Flex request failed.";
       if (background && state.data) {
-        state.cacheStatus = "报表刷新失败，继续显示缓存";
+        state.cacheStatus = flexRefreshFailureStatus(state.flexStatus);
         renderDashboard();
       } else {
         renderUpload();
@@ -2357,7 +2412,7 @@ function requestFlexReport({ background = false } = {}) {
     if (!reportText.trim()) {
       state.flexStatus = "IBKR returned an empty Flex report.";
       if (background && state.data) {
-        state.cacheStatus = "报表刷新失败，继续显示缓存";
+        state.cacheStatus = flexRefreshFailureStatus(state.flexStatus);
         renderDashboard();
       } else {
         renderUpload();
@@ -2368,7 +2423,7 @@ function requestFlexReport({ background = false } = {}) {
     if (reportText.trimStart().startsWith("<")) {
       state.flexStatus = "IBKR returned XML. Configure the Activity Flex Query output as Text/CSV-compatible, or add an XML adapter before parsing.";
       if (background && state.data) {
-        state.cacheStatus = "报表刷新失败，继续显示缓存";
+        state.cacheStatus = flexRefreshFailureStatus(state.flexStatus);
         renderDashboard();
       } else {
         renderUpload();
@@ -2382,6 +2437,7 @@ function requestFlexReport({ background = false } = {}) {
 
     if (state.data && state.reportFingerprint === reportFingerprint) {
       state.flexStatus = "IBKR Flex report is already current.";
+      state.cacheLoadedAt = fetchedAt;
       state.cacheStatus = background ? `报表已是最新 ${formatDateTime(fetchedAt)}` : `已是最新 ${formatDateTime(fetchedAt)}`;
       await writeCachedFlexReport({
         text: reportText,
@@ -2404,6 +2460,7 @@ function requestFlexReport({ background = false } = {}) {
     });
 
     if (parsed) {
+      state.cacheLoadedAt = fetchedAt;
       await writeCachedFlexReport({
         text: reportText,
         sourceName,
@@ -2450,6 +2507,57 @@ function requestFlexReport({ background = false } = {}) {
     token: state.flexToken.trim(),
     queryId: state.flexQueryId.trim()
   });
+}
+
+function flexRefreshFailureStatus(error) {
+  const message = String(error || "");
+
+  if (/1019|generation in progress|generating/i.test(message)) {
+    return "IBKR 仍在生成报表，显示缓存";
+  }
+
+  if (/could not connect|connect|transport|timeout|timed out|network|request failed/i.test(message)) {
+    return "报表刷新连接失败，显示缓存";
+  }
+
+  return "报表刷新失败，继续显示缓存";
+}
+
+function refreshStatusHelpText() {
+  const statementPeriod = state.data ? renderDateRange(state.data) : "";
+  const loadedAt = state.cacheLoadedAt ? formatDateTime(state.cacheLoadedAt) : "";
+  const status = state.cacheStatus || "";
+  const lines = state.language === "en"
+    ? [
+        `Statement period: ${statementPeriod || "unknown"}.`,
+        loadedAt ? `Cached report loaded at: ${loadedAt}.` : "",
+        "Flex is an Activity Statement source, not real-time portfolio data.",
+        "If IBKR is still generating the report, wait until the latest daily statement is available and refresh again.",
+        "If refresh failed, the app keeps showing the last local cached report."
+      ]
+    : [
+        `报表区间：${statementPeriod || "未知"}。`,
+        loadedAt ? `本机缓存载入时间：${loadedAt}。` : "",
+        "Flex 是 Activity Statement 报表源，不是实时持仓。",
+        "如果 IBKR 仍在生成报表，等最新日结报表可用后再刷新。",
+        "如果刷新失败，应用会继续显示最后一次本机缓存。"
+      ];
+
+  if (/生成|generating/i.test(status)) {
+    lines.push(state.language === "en"
+      ? "Current status: IBKR has not finished generating the requested statement."
+      : "当前状态：IBKR 还没生成完请求的报表。");
+  } else if (/失败|failed|连接|connect/i.test(status)) {
+    lines.push(state.language === "en"
+      ? "Current status: refresh failed; cached data is still on screen."
+      : "当前状态：刷新失败，屏幕上仍是缓存数据。");
+  } else if (/刷新中|Refreshing/i.test(status)) {
+    lines.push(state.language === "en"
+      ? "Current status: requesting and waiting for the Flex statement."
+      : "当前状态：正在请求并等待 Flex 报表。");
+  }
+
+  return lines.filter(Boolean).join("\n");
 }
 
 async function readFile(file) {
