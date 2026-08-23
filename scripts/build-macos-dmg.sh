@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_PATH="$ROOT_DIR/src-tauri/target/release/bundle/macos/IBKR Analytics Studio.app"
 OUTPUT_DIR="$ROOT_DIR/outputs"
 ARCH="${ARCH:-$(uname -m)}"
-DMG_PATH="$OUTPUT_DIR/IBKR-Analytics-Studio-2.1.15-macos-${ARCH}.dmg"
+DMG_PATH="$OUTPUT_DIR/IBKR-Analytics-Studio-2.1.16-macos-${ARCH}.dmg"
 STAGING_DIR="${TMPDIR:-/tmp}/ibkr-analytics-studio-dmg"
 
 if [[ ! -d "$APP_PATH" ]]; then
@@ -20,12 +20,17 @@ mkdir -p "$STAGING_DIR" "$OUTPUT_DIR"
 ditto "$APP_PATH" "$STAGING_DIR/IBKR Analytics Studio.app"
 ln -s /Applications "$STAGING_DIR/Applications"
 
+codesign --force --deep --sign - "$STAGING_DIR/IBKR Analytics Studio.app"
+codesign --verify --deep --strict --verbose=2 "$STAGING_DIR/IBKR Analytics Studio.app"
+
 hdiutil create \
   -volname "IBKR Analytics Studio" \
   -srcfolder "$STAGING_DIR" \
   -ov \
   -format UDZO \
   "$DMG_PATH"
+
+hdiutil verify "$DMG_PATH"
 
 rm -rf "$STAGING_DIR"
 echo "Created $DMG_PATH"

@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.1.16-macos.1
+
+macOS packaging fix release.
+
+- Rebuilt the DMG with an explicit ad-hoc signed `.app` bundle to avoid the broken-signature "damaged" install failure on other Macs.
+- Added build-time signature verification and DMG verification before a package is published.
+
 ## v2.1.15-macos.1
 
 Icon and allocation legend polish release.

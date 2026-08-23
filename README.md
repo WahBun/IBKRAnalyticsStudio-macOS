@@ -11,7 +11,7 @@
 Releases 推荐上传这个文件给普通 macOS 用户：
 
 ```text
-IBKR-Analytics-Studio-2.1.15-macos-arm64.dmg
+IBKR-Analytics-Studio-2.1.16-macos-arm64.dmg
 ```
 
 安装方式：
@@ -19,6 +19,8 @@ IBKR-Analytics-Studio-2.1.15-macos-arm64.dmg
 1. 下载并打开 `.dmg`。
 2. 将 `IBKR Analytics Studio.app` 拖到 `Applications`。
 3. 第一次打开若 macOS 提示未验证开发者，可右键 App 后选择 Open。
+
+`v2.1.16` 起，DMG 内的 App 会在打包时重新签名并校验，避免下载到其他 Mac 后因为签名损坏被提示“文件已损坏”。当前包仍未接 Apple Developer ID 公证；若 macOS 继续拦截，这是未公证提示，不是安装包损坏。
 
 当前 macOS 包面向 Apple Silicon/arm64。Intel Mac 需要后续单独构建 `x86_64` 或 universal 包。
 
@@ -276,7 +278,7 @@ npm run tauri:dmg
 输出位置：
 
 ```text
-outputs/IBKR-Analytics-Studio-2.1.15-macos-arm64.dmg
+outputs/IBKR-Analytics-Studio-2.1.16-macos-arm64.dmg
 ```
 
 ### Flex API 和 IB Gateway 的区别
