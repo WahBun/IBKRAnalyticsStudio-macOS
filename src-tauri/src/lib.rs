@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
-const APP_VERSION: &str = "2.1.16";
+const APP_VERSION: &str = "2.1.17";
 const FLEX_BASE_URL: &str = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService";
 const RETRY_DELAYS: [u64; 6] = [1, 2, 4, 8, 12, 16];
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);

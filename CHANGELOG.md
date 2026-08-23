@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.17-macos.1
+
+Overview and NAV parsing polish release.
+
+- Improved Flex NAV parsing so the latest usable NAV row is preferred when the newest row has blank totals.
+- Recovered current NAV and cash from NAV history when IBKR omits those values while open positions still exist.
+- Cleaned up Overview KPI display and holdings allocation alignment.
+
 ## v2.1.16-macos.1
 
 macOS packaging fix release.
