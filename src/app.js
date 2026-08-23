@@ -997,17 +997,20 @@ function renderOverview(data) {
   const twr = returnStatus.isReliable ? returnStatus.returnRate : 0;
   data.nav.rateOfReturn = twr;
   const portfolioAllocation = buildPortfolioAllocation(data);
+  const navMissing = totalPortfolioExposure(data) > 0 && (!Number.isFinite(Number(data.nav.total)) || Number(data.nav.total) <= 0);
+  const cashMissing = data.nav.cashAvailable === false;
+  const navFoot = navMissing ? "⚠ NAV 数据暂不可用" : renderDateRange(data);
+  const cashFoot = cashMissing ? "⚠ Cash 数据暂不可用" : "Net Asset Value";
   return `
     <div class="content-stack">
       ${renderPageHeading(t("overviewHeading"), data, t("overviewSubtitle"))}
       <div class="grid-12">
-        ${renderKpi("期末净值", formatMoney(data.nav.total, currency), renderDateRange(data), "span-3")}
-        ${renderKpi("现金", formatMoney(data.nav.cash, currency), "Net Asset Value / Cash", "span-3")}
+        ${renderKpi("期末净值", formatMoney(data.nav.total, currency), navFoot, "span-3")}
+        ${renderKpi("现金", formatMoney(data.nav.cash, currency), cashFoot, "span-3")}
         ${renderKpi("总盈亏", formatMoney(totalPL, currency), "已实现 + 未实现", "span-3", totalPL)}
         ${renderKpi("时间加权收益", returnStatus.isReliable ? formatPercent(data.nav.rateOfReturn) : "-", returnStatus.isReliable ? "IBKR TWR" : "TWR 数据不完整", "span-3", returnStatus.isReliable ? data.nav.rateOfReturn : null)}
         ${renderKpi("交易订单", formatNumber(data.tradeSummary.orderCount), `${formatNumber(data.tradeSummary.stockOrders)} 股票 / ${formatNumber(data.tradeSummary.forexOrders)} 外汇`, "span-3")}
         ${renderKpi("当前持仓", formatNumber(data.positions.length), `${formatNumber(data.assetAllocation.length)} 个资产类别`, "span-3")}
-        ${renderKpi("识别区块", formatNumber(Object.keys(data.sectionStats).length), "CSV sections", "span-3")}
         ${renderKpi("佣金费用", formatMoney(data.tradeSummary.totalCommissions, currency), "Trades summary", "span-3", -data.tradeSummary.totalCommissions)}
       </div>
       <div class="grid-12">
@@ -1646,7 +1649,7 @@ function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(
         </div>
         <div>
           <span>最新净值</span>
-          <strong>${formatMoney(lastPoint.nav, currency)}</strong>
+          <strong>${formatMoney(data.nav.total > 0 ? data.nav.total : lastPoint.nav, currency)}</strong>
         </div>
         <div>
           <span>区间高点</span>

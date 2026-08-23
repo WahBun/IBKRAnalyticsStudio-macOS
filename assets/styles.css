@@ -1843,7 +1843,7 @@ tbody tr:hover {
 .allocation-row > .numeric {
   min-width: 0;
   overflow: hidden;
-  text-align: right;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2231,10 +2231,11 @@ tbody tr:hover {
 .position-pie-legend .pie-total {
   order: -1;
   grid-column: 1 / -1;
-  margin: 0 0 4px;
+  margin: -30px 0 4px;
   color: var(--ink);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .position-chart-card {

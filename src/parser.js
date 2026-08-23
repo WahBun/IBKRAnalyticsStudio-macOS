@@ -29,6 +29,7 @@ export function parseIbkrReport(csvText) {
   if (Number.isFinite(historyReturn)) {
     nav.rateOfReturn = historyReturn;
   }
+  stabilizeCurrentNav(nav, navHistory, positions);
   const assetAllocation = summarizePositions(positions, "assetCategory");
   const currencyExposure = summarizePositions(positions, "currency");
   const warnings = buildWarnings(sections, nav, positions, tradeSummary);
@@ -169,7 +170,7 @@ function collectFlexSections(rows) {
   }
 
   if (rawByCode.EQUT?.length) {
-    sections["Net Asset Value"] = flexNavRows(latestFlexRow(rawByCode.EQUT, "ReportDate"), rawByCode.CNAV?.[0]);
+    sections["Net Asset Value"] = flexNavRows(latestFlexNavRow(rawByCode.EQUT, "ReportDate"), rawByCode.CNAV?.[0]);
     sections["Net Asset Value History"] = rawByCode.EQUT.map(flexNavHistoryRow);
   }
 
@@ -276,6 +277,18 @@ function latestFlexRow(rows, dateField) {
     })[0] || rows[0];
 }
 
+function latestFlexNavRow(rows, dateField) {
+  const sorted = rows
+    .slice()
+    .sort((a, b) => {
+      const dateA = parseDate(a[dateField])?.getTime() || 0;
+      const dateB = parseDate(b[dateField])?.getTime() || 0;
+      return dateB - dateA;
+    });
+
+  return sorted.find((row) => String(row.Total ?? "").trim() !== "") || sorted[0] || rows[0];
+}
+
 function latestFlexRows(rows, dateField) {
   const dates = rows
     .map((row) => parseDate(row[dateField]))
@@ -303,10 +316,10 @@ function flexAccountRows(row) {
 
 function flexNavRows(row, changeRow) {
   const rows = [
-    { "Asset Class": "Cash", "Current Total": row.Cash || "0", Total: row.Cash || "0" },
-    { "Asset Class": "Stocks", "Current Total": row.Stock || "0", Total: row.Stock || "0" },
-    { "Asset Class": "Options", "Current Total": row.Options || "0", Total: row.Options || "0" },
-    { "Asset Class": "Total", "Current Total": row.Total || "0", Total: row.Total || "0" }
+    { "Asset Class": "Cash", "Current Total": row.Cash ?? "", Total: row.Cash ?? "" },
+    { "Asset Class": "Stocks", "Current Total": row.Stock ?? "", Total: row.Stock ?? "" },
+    { "Asset Class": "Options", "Current Total": row.Options ?? "", Total: row.Options ?? "" },
+    { "Asset Class": "Total", "Current Total": row.Total ?? "", Total: row.Total ?? "" }
   ];
 
   if (changeRow?.TWR) {
@@ -679,10 +692,14 @@ function parseNetAssetValue(rows = [], baseCurrency) {
   const cashRow = rows.find((row) => row["Asset Class"] === "Cash");
   const totalRow = rows.find((row) => row["Asset Class"] === "Total");
   const returnRow = rows.find((row) => row["Time Weighted Rate of Return"]);
+  const cashValue = readValue(cashRow, ["Current Total", "Total"]);
+  const totalValue = readValue(totalRow, ["Current Total", "Total"]);
 
   return {
-    cash: toNumber(readValue(cashRow, ["Current Total", "Total"])),
-    total: toNumber(readValue(totalRow, ["Current Total", "Total"])),
+    cash: toNumber(cashValue),
+    total: toNumber(totalValue),
+    cashAvailable: String(cashValue ?? "").trim() !== "",
+    totalAvailable: String(totalValue ?? "").trim() !== "",
     rateOfReturn: toNumber(readValue(returnRow, ["Time Weighted Rate of Return"])),
     baseCurrency
   };
@@ -795,6 +812,27 @@ function parseDailyReturnHistory(rows = [], navByDate = new Map()) {
 function latestFlowAdjustedReturn(navHistory = []) {
   const rows = navHistory.filter((row) => row.flowAdjusted && Number.isFinite(row.returnRate));
   return rows.length ? rows[rows.length - 1].returnRate : null;
+}
+
+function stabilizeCurrentNav(nav, navHistory = [], positions = []) {
+  const hasOpenPositions = positions.some((row) => Math.abs(toNumber(row.value)) > 0);
+  if (!hasOpenPositions) return;
+
+  const latestHistory = navHistory
+    .filter((row) => Number.isFinite(row.nav) && row.nav > 0)
+    .slice()
+    .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")))
+    .at(-1);
+
+  if ((!nav.totalAvailable || nav.total <= 0) && latestHistory?.nav > 0) {
+    nav.total = latestHistory.nav;
+    nav.totalRecovered = true;
+  }
+
+  if (!nav.cashAvailable && Number.isFinite(latestHistory?.cash)) {
+    nav.cash = latestHistory.cash;
+    nav.cashRecovered = true;
+  }
 }
 
 function parsePlSummary(rows = [], trades = []) {
