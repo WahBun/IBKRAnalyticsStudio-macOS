@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.1.17";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.17";
-import { parseIbkrReport } from "./parser.js?v=2.1.17";
+import { decodeReportFile } from "./encoding.js?v=2.1.25";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.25";
+import { parseIbkrReport } from "./parser.js?v=2.1.25";
 
 const app = document.querySelector("#app");
 
@@ -351,7 +351,7 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.17";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.25";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9", "#67e8f9", "#5eead4"];
@@ -362,7 +362,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const SP500_BENCHMARK_URL = "https://sp500-proxy.3368517784.workers.dev";
-const APP_VERSION = "2.1.17";
+const APP_VERSION = "2.1.25";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -770,7 +770,7 @@ function renderSideNav() {
   return `
     <aside class="side-nav">
       <div class="side-brand">
-        ${renderBrand("IBKR Analytics", `Version ${APP_VERSION}`)}
+        ${renderBrand("IBKR Analytics Studio", `Version ${APP_VERSION}`)}
       </div>
       <nav class="side-nav-list" aria-label="${t("reportNav")}">
         ${tabs.map((tab) => renderNavButton(tab)).join("")}
@@ -789,7 +789,7 @@ function renderMobileBar() {
   return `
     <header class="mobile-bar">
       <div class="mobile-bar-main">
-        ${renderBrand("IBKR Analytics", t("localReport"))}
+        ${renderBrand("IBKR Analytics Studio", t("localReport"))}
         <div class="top-actions">
           ${renderDashboardFlexRefreshButton("mobileFlexRefreshButton", true)}
           ${renderLanguageSwitch()}
@@ -916,7 +916,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.1.17" alt="" />
+        <img src="./assets/app-logo.png?v=2.1.25" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1063,7 +1063,10 @@ function renderPerformance(data) {
         <section class="dashboard-card chart-card span-12">
           <div class="card-header">
             <h2>月度收入与支出</h2>
-            <span class="tag-list"><span class="pill">净额</span><span class="pill">费用</span></span>
+            <span class="tag-list">
+              <span class="pill monthly-legend is-net"><i></i>${state.language === "en" ? "Net P/L" : "净盈亏"}</span>
+              <span class="pill monthly-legend is-expense"><i></i>${state.language === "en" ? "Fees + Commissions" : "佣金+费用"}</span>
+            </span>
           </div>
           ${renderMonthlyChart(data.monthlySummary, currency)}
         </section>
@@ -1983,11 +1986,22 @@ function renderMonthlyChart(rows, currency) {
     <div class="monthly-chart" aria-label="月度净额图表">
       ${rows.slice(-12).map((row) => {
         const expense = Math.max(0, row.commissions + row.fees);
+        const grossBeforeExpenses = row.net + expense;
+        const monthLabel = row.month || "";
+        const tooltip = [
+          monthLabel,
+          `${state.language === "en" ? "Net P/L" : "净盈亏"}: ${signedMoney(row.net, currency)}`,
+          `${state.language === "en" ? "Commissions" : "佣金"}: ${formatMoney(row.commissions, currency)}`,
+          `${state.language === "en" ? "Other fees" : "其他费用"}: ${formatMoney(row.fees, currency)}`,
+          `${state.language === "en" ? "Total expenses" : "费用合计"}: ${formatMoney(expense, currency)}`,
+          `${state.language === "en" ? "Before expenses" : "扣费前"}: ${signedMoney(grossBeforeExpenses, currency)}`
+        ].join("\n");
         return `
-          <div class="chart-column" title="${escapeAttribute(`${row.month}: ${formatMoney(row.net, currency)}`)}">
-            <div class="chart-bar" style="height:${Math.max(3, Math.abs(row.net) / max * 150)}px"></div>
+          <div class="chart-column" tabindex="0">
+            <div class="chart-bar net is-${valueClass(row.net)}" style="height:${Math.max(3, Math.abs(row.net) / max * 150)}px"></div>
             <div class="chart-bar expense" style="height:${Math.max(3, expense / max * 80)}px"></div>
             <div class="chart-label">${escapeHtml(shortMonth(row.month))}</div>
+            <div class="monthly-tooltip" role="tooltip">${escapeHtml(tooltip)}</div>
           </div>
         `;
       }).join("")}
@@ -2759,7 +2773,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.17");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.25");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -3769,7 +3783,7 @@ function numberLocale() {
 function maskAccount(account) {
   if (!account) return t("unknownAccount");
   const text = String(account);
-  return text.length <= 4 ? text : `${text.slice(0, 2)}••${text.slice(-3)}`;
+  return text.length <= 5 ? text : `${text.slice(0, 1)}***${text.slice(-4)}`;
 }
 
 function escapeHtml(value) {

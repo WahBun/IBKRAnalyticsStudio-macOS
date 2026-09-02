@@ -1,4 +1,26 @@
 const OPTION_ASSET = "Equity and Index Options";
+const PLACEHOLDER_NAV_LIMIT = 1.01;
+const PLACEHOLDER_EXPOSURE_MIN = 100;
+const FLEX_NAV_CASH_KEYS = [
+  "Cash",
+  "TotalCash",
+  "CashBalance",
+  "SettledCash",
+  "BrokerCashComponent",
+  "EndingCash"
+];
+const FLEX_NAV_STOCK_KEYS = ["Stock", "Stocks", "StockValue"];
+const FLEX_NAV_OPTION_KEYS = ["Options", "Option", "OptionValue"];
+const FLEX_NAV_FUTURE_KEYS = ["Commodities", "Commodity", "Futures", "FuturesOptions"];
+const FLEX_NAV_TOTAL_KEYS = [
+  "Total",
+  "CurrentTotal",
+  "EndingValue",
+  "NetLiquidation",
+  "NetLiquidationValue",
+  "NetAssetValue",
+  "EquityWithLoanValue"
+];
 
 export function parseIbkrReport(csvText) {
   const sections = collectSections(csvText);
@@ -170,13 +192,16 @@ function collectFlexSections(rows) {
   }
 
   if (rawByCode.EQUT?.length) {
-    sections["Net Asset Value"] = flexNavRows(latestFlexNavRow(rawByCode.EQUT, "ReportDate"), rawByCode.CNAV?.[0]);
-    sections["Net Asset Value History"] = rawByCode.EQUT.map(flexNavHistoryRow);
+    const navRows = latestFlexRows(rawByCode.EQUT, "ReportDate");
+    const navChangeRows = latestFlexRows(rawByCode.CNAV || [], "ToDate");
+    const flexCashBalance = latestFlexCashBalance(rawByCode.FXPO, "ReportDate", navRows);
+    sections["Net Asset Value"] = flexNavRows(navRows, aggregateFlexNavChangeRow(navChangeRows), flexCashBalance);
+    sections["Net Asset Value History"] = flexNavHistoryRows(rawByCode.EQUT);
   }
 
   if (rawByCode.CNAV?.length) {
-    sections["Change in NAV"] = flexNavChangeRows(rawByCode.CNAV[0]);
-    sections["Time Weighted Return History"] = rawByCode.CNAV.map(flexReturnHistoryRow);
+    sections["Change in NAV"] = flexNavChangeRows(aggregateFlexNavChangeRow(latestFlexRows(rawByCode.CNAV, "ToDate")));
+    sections["Time Weighted Return History"] = flexReturnHistoryRows(rawByCode.CNAV);
   }
 
   if (rawByCode.POST?.length) {
@@ -237,11 +262,6 @@ function collectFlexSections(rows) {
       Date: row.Date || row.ReportDate || "",
       Currency: row.CurrencyPrimary || "",
       Amount: row.TaxAmount || "0"
-    })),
-    ...(rawByCode.UNBC || []).map((row) => ({
-      Date: row["Date/Time"] || "",
-      Currency: row.CurrencyPrimary || "",
-      Amount: row.TotalCommission || "0"
     }))
   ];
   if (feeRows.length) sections.Fees = feeRows;
@@ -286,7 +306,7 @@ function latestFlexNavRow(rows, dateField) {
       return dateB - dateA;
     });
 
-  return sorted.find((row) => String(row.Total ?? "").trim() !== "") || sorted[0] || rows[0];
+  return sorted.find((row) => readFlexValue(row, FLEX_NAV_TOTAL_KEYS) !== "") || sorted[0] || rows[0];
 }
 
 function latestFlexRows(rows, dateField) {
@@ -304,6 +324,41 @@ function latestFlexRows(rows, dateField) {
   });
 }
 
+function latestFlexCashBalance(rows = [], dateField, referenceRows = []) {
+  if (!rows?.length) return "";
+
+  const references = Array.isArray(referenceRows) ? referenceRows : [referenceRows];
+  const accountIds = new Set(references.map((row) => String(row?.ClientAccountID || "").trim()).filter(Boolean));
+  const accountRows = accountIds.size
+    ? rows.filter((row) => accountIds.has(String(row.ClientAccountID || "").trim()))
+    : rows;
+  if (!accountRows.length) return "";
+
+  const referenceDateKey = references
+    .map((row) => parseDate(row?.[dateField] || row?.ReportDate))
+    .filter(Boolean)
+    .map((date) => dateKey(date))
+    .sort()
+    .at(-1) || "";
+  const sameDateRows = referenceDateKey
+    ? accountRows.filter((row) => {
+        const date = parseDate(row[dateField] || row.ReportDate);
+        return date && dateKey(date) === referenceDateKey;
+      })
+    : [];
+  const dateRows = sameDateRows.length ? sameDateRows : latestFlexRows(accountRows, dateField);
+  const summaryRows = dateRows.filter((row) => String(row.LevelOfDetail || "").toUpperCase() === "SUMMARY");
+  const selectedRows = summaryRows.length ? summaryRows : dateRows;
+  const cashRows = selectedRows.filter((row) => {
+    const assetClass = String(row.AssetClass || "").toUpperCase();
+    return assetClass === "CASH" || row.FXCurrency || row.Value;
+  });
+  if (!cashRows.length) return "";
+
+  const total = cashRows.reduce((sum, row) => sum + toNumber(readValue(row, ["Value", "Cash", "Total"])), 0);
+  return Number.isFinite(total) ? String(total) : "";
+}
+
 function flexAccountRows(row) {
   return [
     ["Account", row.ClientAccountID],
@@ -314,12 +369,19 @@ function flexAccountRows(row) {
   ].map(([name, value]) => ({ "Field Name": name, "Field Value": value || "" }));
 }
 
-function flexNavRows(row, changeRow) {
+function flexNavRows(rowOrRows = {}, changeRow, flexCashBalance = "") {
+  const row = aggregateFlexNavRow(rowOrRows);
+  const cash = preferMeaningfulFlexValue(readFlexValue(row, FLEX_NAV_CASH_KEYS), flexCashBalance);
+  const stocks = readFlexValue(row, FLEX_NAV_STOCK_KEYS);
+  const options = readFlexValue(row, FLEX_NAV_OPTION_KEYS);
+  const futures = readFlexValue(row, FLEX_NAV_FUTURE_KEYS);
+  const total = readFlexValue(row, FLEX_NAV_TOTAL_KEYS);
   const rows = [
-    { "Asset Class": "Cash", "Current Total": row.Cash ?? "", Total: row.Cash ?? "" },
-    { "Asset Class": "Stocks", "Current Total": row.Stock ?? "", Total: row.Stock ?? "" },
-    { "Asset Class": "Options", "Current Total": row.Options ?? "", Total: row.Options ?? "" },
-    { "Asset Class": "Total", "Current Total": row.Total ?? "", Total: row.Total ?? "" }
+    { "Asset Class": "Cash", "Current Total": cash, Total: cash },
+    { "Asset Class": "Stocks", "Current Total": stocks, Total: stocks },
+    { "Asset Class": "Options", "Current Total": options, Total: options },
+    { "Asset Class": "Futures", "Current Total": futures, Total: futures },
+    { "Asset Class": "Total", "Current Total": total, Total: total }
   ];
 
   if (changeRow?.TWR) {
@@ -330,13 +392,105 @@ function flexNavRows(row, changeRow) {
 }
 
 function flexNavHistoryRow(row) {
+  const placeholder = isFlexNavPlaceholderRow(row);
   return {
     Date: row.ReportDate || "",
-    Cash: row.Cash || "0",
-    Stocks: row.Stock || "0",
-    Options: row.Options || "0",
-    Total: row.Total || "0"
+    Cash: placeholder ? "" : readFlexValue(row, FLEX_NAV_CASH_KEYS),
+    Stocks: placeholder ? "" : readFlexValue(row, FLEX_NAV_STOCK_KEYS),
+    Options: placeholder ? "" : readFlexValue(row, FLEX_NAV_OPTION_KEYS),
+    Futures: placeholder ? "" : readFlexValue(row, FLEX_NAV_FUTURE_KEYS),
+    Total: placeholder ? "" : readFlexValue(row, FLEX_NAV_TOTAL_KEYS)
   };
+}
+
+function flexNavHistoryRows(rows = []) {
+  return aggregateFlexRowsByDate(rows, "ReportDate", aggregateFlexNavRow)
+    .map(flexNavHistoryRow);
+}
+
+function flexReturnHistoryRows(rows = []) {
+  return aggregateFlexRowsByDate(rows, "ToDate", aggregateFlexNavChangeRow)
+    .map(flexReturnHistoryRow);
+}
+
+function aggregateFlexRowsByDate(rows = [], dateField, aggregate) {
+  const groups = new Map();
+
+  for (const row of rows) {
+    const date = parseDate(row[dateField] || row.ReportDate || row.FromDate);
+    const key = date ? dateKey(date) : String(row[dateField] || row.ReportDate || row.FromDate || "");
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+
+  return Array.from(groups.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, groupRows]) => aggregate(groupRows));
+}
+
+function aggregateFlexNavRow(rowOrRows = {}) {
+  const rows = Array.isArray(rowOrRows) ? rowOrRows : [rowOrRows];
+  const selectedRows = rows.filter(Boolean);
+  const date = selectedRows
+    .map((row) => parseDate(row.ReportDate))
+    .filter(Boolean)
+    .map((value) => dateKey(value))
+    .sort()
+    .at(-1) || "";
+
+  return {
+    ReportDate: date,
+    Cash: sumFlexNavValues(selectedRows, FLEX_NAV_CASH_KEYS),
+    Stock: sumFlexNavValues(selectedRows, FLEX_NAV_STOCK_KEYS),
+    Options: sumFlexNavValues(selectedRows, FLEX_NAV_OPTION_KEYS),
+    Commodities: sumFlexNavValues(selectedRows, FLEX_NAV_FUTURE_KEYS),
+    Total: sumFlexNavValues(selectedRows, FLEX_NAV_TOTAL_KEYS)
+  };
+}
+
+function aggregateFlexNavChangeRow(rows = []) {
+  const selectedRows = (Array.isArray(rows) ? rows : [rows]).filter(Boolean);
+  if (!selectedRows.length) return {};
+  const sample = selectedRows[0] || {};
+  const result = {
+    ClientAccountID: sample.ClientAccountID || "",
+    AccountAlias: sample.AccountAlias || "",
+    Model: sample.Model || "",
+    CurrencyPrimary: sample.CurrencyPrimary || "",
+    FromDate: selectedRows
+      .map((row) => parseDate(row.FromDate))
+      .filter(Boolean)
+      .map((value) => dateKey(value))
+      .sort()[0] || sample.FromDate || "",
+    ToDate: selectedRows
+      .map((row) => parseDate(row.ToDate))
+      .filter(Boolean)
+      .map((value) => dateKey(value))
+      .sort()
+      .at(-1) || sample.ToDate || ""
+  };
+
+  const nonNumericKeys = new Set(["ClientAccountID", "AccountAlias", "Model", "CurrencyPrimary", "FromDate", "ToDate", "TWR"]);
+  for (const key of new Set(selectedRows.flatMap((row) => Object.keys(row)))) {
+    if (nonNumericKeys.has(key)) continue;
+    result[key] = String(selectedRows.reduce((sum, row) => sum + toNumber(row[key]), 0));
+  }
+
+  const twrWeight = selectedRows.reduce((sum, row) => {
+    const weight = Math.max(toNumber(row.StartingValue), toNumber(row.EndingValue), 0);
+    return sum + weight;
+  }, 0);
+  if (twrWeight > 0) {
+    result.TWR = String(selectedRows.reduce((sum, row) => {
+      const weight = Math.max(toNumber(row.StartingValue), toNumber(row.EndingValue), 0);
+      return sum + toNumber(row.TWR) * weight;
+    }, 0) / twrWeight);
+  } else {
+    result.TWR = sample.TWR || "";
+  }
+
+  return result;
 }
 
 function flexNavChangeRows(row) {
@@ -736,10 +890,11 @@ function parseNavHistory(rows = [], returnRows = [], periodReturn = 0) {
           nav: toNumber(row.Total),
           cash: toNumber(row.Cash),
           stocks: toNumber(row.Stocks),
-          options: toNumber(row.Options)
+          options: toNumber(row.Options),
+          futures: toNumber(row.Futures)
         }];
       })
-      .filter(([date, row]) => date && row.nav > 0)
+      .filter(([date, row]) => date && isUsableNavAmount(row.nav))
   );
 
   const returnPoints = parseDailyReturnHistory(returnRows, navByDate);
@@ -754,10 +909,11 @@ function parseNavHistory(rows = [], returnRows = [], periodReturn = 0) {
         cash: toNumber(row.Cash),
         stocks: toNumber(row.Stocks),
         options: toNumber(row.Options),
+        futures: toNumber(row.Futures),
         source: "nav"
       };
     })
-    .filter((row) => row.date && row.nav > 0)
+    .filter((row) => row.date && isUsableNavAmount(row.nav))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const baseNav = points.find((row) => row.nav > 0)?.nav || 0;
@@ -773,17 +929,17 @@ function parseDailyReturnHistory(rows = [], navByDate = new Map()) {
   const dailyRows = rows
     .map((row) => {
       const date = parseDate(row.ToDate || row.FromDate);
-      return {
-        date: date ? dateKey(date) : "",
-        twr: toNumber(row.TWR),
+    return {
+      date: date ? dateKey(date) : "",
+      twr: toNumber(row.TWR),
         startingValue: toNumber(row.StartingValue),
         endingValue: toNumber(row.EndingValue),
         depositsWithdrawals: toNumber(row.DepositsWithdrawals),
         assetTransfers: toNumber(row.AssetTransfers),
         internalCashTransfers: toNumber(row.InternalCashTransfers)
-      };
-    })
-    .filter((row) => row.date && row.endingValue > 0)
+    };
+  })
+    .filter((row) => row.date && isUsableNavAmount(row.endingValue))
     .sort((a, b) => a.date.localeCompare(b.date));
 
   if (dailyRows.length < 2) return [];
@@ -798,6 +954,7 @@ function parseDailyReturnHistory(rows = [], navByDate = new Map()) {
       cash: nav.cash || 0,
       stocks: nav.stocks || 0,
       options: nav.options || 0,
+      futures: nav.futures || 0,
       dailyReturn: row.twr,
       returnRate: (cumulative - 1) * 100,
       depositsWithdrawals: row.depositsWithdrawals,
@@ -815,23 +972,49 @@ function latestFlowAdjustedReturn(navHistory = []) {
 }
 
 function stabilizeCurrentNav(nav, navHistory = [], positions = []) {
-  const hasOpenPositions = positions.some((row) => Math.abs(toNumber(row.value)) > 0);
+  const positionExposure = positions.reduce((sum, row) => sum + Math.abs(toNumber(row.value)), 0);
+  const positionNetValue = positions.reduce((sum, row) => sum + toNumber(row.value), 0);
+  const hasOpenPositions = positionExposure > 0;
   if (!hasOpenPositions) return;
 
   const latestHistory = navHistory
-    .filter((row) => Number.isFinite(row.nav) && row.nav > 0)
+    .filter((row) => isUsableNavAmount(row.nav))
     .slice()
     .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")))
     .at(-1);
 
-  if ((!nav.totalAvailable || nav.total <= 0) && latestHistory?.nav > 0) {
+  const hasMaterialPositions = positionExposure >= PLACEHOLDER_EXPOSURE_MIN;
+  const totalPlaceholder = hasMaterialPositions && isPlaceholderNavAmount(nav.total);
+  const cashPlaceholder = hasMaterialPositions && isPlaceholderNavAmount(nav.cash);
+
+  if (totalPlaceholder) {
+    nav.totalAvailable = false;
+    nav.totalPlaceholder = true;
+  }
+
+  if (cashPlaceholder) {
+    nav.cashAvailable = false;
+    nav.cashPlaceholder = true;
+    nav.cash = 0;
+  }
+
+  if ((!nav.totalAvailable || nav.total <= 0) && isUsableNavAmount(latestHistory?.nav)) {
     nav.total = latestHistory.nav;
+    nav.totalAvailable = true;
     nav.totalRecovered = true;
   }
 
-  if (!nav.cashAvailable && Number.isFinite(latestHistory?.cash)) {
+  if (!nav.cashAvailable && Number.isFinite(latestHistory?.cash) && !isPlaceholderNavAmount(latestHistory.cash)) {
     nav.cash = latestHistory.cash;
+    nav.cashAvailable = true;
     nav.cashRecovered = true;
+  }
+
+  const estimatedTotal = positionNetValue + (Number.isFinite(nav.cash) ? nav.cash : 0);
+  if ((!nav.totalAvailable || nav.total <= 0) && nav.cashAvailable && isUsableNavAmount(estimatedTotal)) {
+    nav.total = estimatedTotal;
+    nav.totalAvailable = true;
+    nav.totalEstimated = true;
   }
 }
 
@@ -1416,6 +1599,47 @@ function readValue(row, keys) {
     if (row[key] !== undefined && row[key] !== "") return row[key];
   }
   return "";
+}
+
+function readFlexValue(row, keys) {
+  return readValue(row, keys);
+}
+
+function sumFlexNavValues(rows, keys) {
+  const values = rows.map((row) => readFlexValue(row, keys)).filter((value) => String(value ?? "").trim() !== "");
+  if (!values.length) return "";
+  return String(values.reduce((sum, value) => sum + toNumber(value), 0));
+}
+
+function preferMeaningfulFlexValue(primary, fallback) {
+  const primaryText = String(primary ?? "").trim();
+  const fallbackText = String(fallback ?? "").trim();
+  if (!fallbackText) return primaryText;
+  if (!primaryText) return fallbackText;
+  if (isPlaceholderNavAmount(primaryText) && !isPlaceholderNavAmount(fallbackText)) return fallbackText;
+  return primaryText;
+}
+
+function isFlexNavPlaceholderRow(row = {}) {
+  const values = [
+    readFlexValue(row, FLEX_NAV_CASH_KEYS),
+    readFlexValue(row, FLEX_NAV_STOCK_KEYS),
+    readFlexValue(row, FLEX_NAV_OPTION_KEYS),
+    readFlexValue(row, FLEX_NAV_FUTURE_KEYS),
+    readFlexValue(row, FLEX_NAV_TOTAL_KEYS)
+  ].map(toNumber).filter((value) => Number.isFinite(value) && Math.abs(value) > 0);
+
+  return values.length > 0 && values.every((value) => Math.abs(value) <= PLACEHOLDER_NAV_LIMIT);
+}
+
+function isPlaceholderNavAmount(value) {
+  const number = toNumber(value);
+  return Number.isFinite(number) && Math.abs(number) > 0 && Math.abs(number) <= PLACEHOLDER_NAV_LIMIT;
+}
+
+function isUsableNavAmount(value) {
+  const number = toNumber(value);
+  return Number.isFinite(number) && Math.abs(number) > PLACEHOLDER_NAV_LIMIT;
 }
 
 function toNumber(value) {

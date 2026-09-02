@@ -1,5 +1,60 @@
 # Changelog
 
+## v2.1.25-macos.1
+
+Local return summary alignment update.
+
+- Centered the four Return Curve summary cards while leaving the rest of the dashboard layout unchanged.
+
+## v2.1.24-macos.1
+
+Local KPI alignment update.
+
+- Centered compact KPI cards while leaving tables, charts, and allocation rows unchanged.
+
+## v2.1.23-macos.1
+
+Local Dock icon fill update.
+
+- Kept the in-app circular brand avatar and switched the bundled macOS Dock icon to a full-bleed photo crop.
+
+## v2.1.22-macos.1
+
+Local icon refinement.
+
+- Changed the app artwork to a Discord-style circular photo icon and matched the in-app brand mark shape.
+
+## v2.1.21-macos.1
+
+Local brand and monthly fee detail update.
+
+- Stopped counting Flex `UNBC` commission totals as separate other fees in the monthly chart.
+- Updated masked account display to keep the first character and last four digits, such as `U***0629`.
+- Renamed the in-app brand to `IBKR Analytics Studio` and refreshed app icons from the supplied photo.
+
+## v2.1.20-macos.1
+
+Local monthly tooltip fix.
+
+- Replaced the monthly chart hover detail with an inline CSS tooltip so each month reliably shows its values.
+- Capitalized the English expense legend to `Fees + Commissions`.
+
+## v2.1.19-macos.1
+
+Local monthly chart polish.
+
+- Made the monthly income/expense legend explicit: net P/L versus fees plus commissions.
+- Added multi-line hover details per month with net P/L, commissions, other fees, total expenses, and pre-expense contribution.
+- Improved monthly bar colors so net P/L and expenses are visually distinct.
+
+## v2.1.18-macos.1
+
+Local NAV parsing fix.
+
+- Aggregated same-day Flex NAV and daily return rows across multiple IBKR account segments instead of taking only the first account row.
+- Ignored `$1` placeholder NAV/Cash rows when material positions exist, preventing Overview from showing fake `$1.00` values.
+- Kept NAV history and return curve aligned with the combined account totals.
+
 ## v2.1.17-macos.1
 
 Overview and NAV parsing polish release.
