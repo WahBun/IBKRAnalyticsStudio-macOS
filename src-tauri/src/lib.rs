@@ -4,8 +4,9 @@ use serde::Serialize;
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
-const APP_VERSION: &str = "2.1.25";
+const APP_VERSION: &str = "2.2.0";
 const FLEX_BASE_URL: &str = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService";
+const FRED_GRAPH_CSV_URL: &str = "https://fred.stlouisfed.org/graph/fredgraph.csv";
 const RETRY_DELAYS: [u64; 6] = [1, 2, 4, 8, 12, 16];
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(45);
@@ -16,6 +17,21 @@ struct FlexFetchResponse {
     report_text: String,
     content_type: String,
     reference_code: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BenchmarkFetchResponse {
+    symbol: &'static str,
+    dates: Vec<String>,
+    closes: Vec<f64>,
+    source: &'static str,
+}
+
+#[derive(Clone, Copy)]
+struct BenchmarkSeries {
+    symbol: &'static str,
+    fred_id: &'static str,
 }
 
 #[derive(Debug)]
@@ -68,6 +84,149 @@ async fn flex_fetch(token: String, query_id: String) -> Result<FlexFetchResponse
         transport_errors.len(),
         transport_errors.join(" | ")
     ))
+}
+
+#[tauri::command]
+async fn benchmark_fetch(symbol: String, start: String, end: String) -> Result<String, String> {
+    let series = benchmark_series(&symbol)?;
+    let start = start.trim().to_string();
+    let end = end.trim().to_string();
+
+    if !looks_like_iso_date(&start) || !looks_like_iso_date(&end) {
+        return Err("Benchmark date range is invalid.".to_string());
+    }
+
+    let clients = build_flex_clients()?;
+    let mut transport_errors = Vec::new();
+
+    for (label, client) in clients {
+        match fetch_fred_benchmark_with_client(&client, series, &start, &end).await {
+            Ok(result) => {
+                return serde_json::to_string(&result)
+                    .map_err(|error| format!("Could not serialize benchmark data. {error}"));
+            }
+            Err(FlexClientError::Transport(message)) => {
+                transport_errors.push(format!("{label}: {message}"));
+            }
+            Err(FlexClientError::Fatal(message)) => return Err(message),
+        }
+    }
+
+    Err(format!(
+        "Benchmark request could not connect. Tried {} route(s): {}",
+        transport_errors.len(),
+        transport_errors.join(" | ")
+    ))
+}
+
+async fn fetch_fred_benchmark_with_client(
+    client: &Client,
+    series: BenchmarkSeries,
+    start: &str,
+    end: &str,
+) -> Result<BenchmarkFetchResponse, FlexClientError> {
+    let url = Url::parse_with_params(FRED_GRAPH_CSV_URL, &[("id", series.fred_id)])
+        .map_err(|error| FlexClientError::Fatal(format!("Could not build the benchmark URL. {error}")))?;
+    let response = client
+        .get(url)
+        .header(USER_AGENT, format!("IBKRAnalyticsStudio/{APP_VERSION} Tauri"))
+        .send()
+        .await
+        .map_err(|error| FlexClientError::Transport(format!("Benchmark request failed. {error}")))?;
+    let status_code = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| FlexClientError::Fatal(format!("Benchmark returned an unreadable body. {error}")))?;
+
+    if !status_code.is_success() {
+        return Err(FlexClientError::Fatal(format!(
+            "Benchmark request failed with HTTP {} {}.",
+            status_code.as_u16(),
+            status_code
+        )));
+    }
+
+    parse_fred_benchmark_csv(series, start, end, &body)
+}
+
+fn benchmark_series(symbol: &str) -> Result<BenchmarkSeries, String> {
+    match symbol.trim().to_ascii_lowercase().as_str() {
+        "sp500" | "spx" | "s&p500" | "s&p 500" => Ok(BenchmarkSeries {
+            symbol: "sp500",
+            fred_id: "SP500",
+        }),
+        "nasdaq" | "nasdaqcom" | "ixic" => Ok(BenchmarkSeries {
+            symbol: "nasdaq",
+            fred_id: "NASDAQCOM",
+        }),
+        _ => Err("Unsupported benchmark symbol.".to_string()),
+    }
+}
+
+fn parse_fred_benchmark_csv(
+    series: BenchmarkSeries,
+    start: &str,
+    end: &str,
+    body: &str,
+) -> Result<BenchmarkFetchResponse, FlexClientError> {
+    let mut prior: Option<(String, f64)> = None;
+    let mut rows: Vec<(String, f64)> = Vec::new();
+
+    for line in body.lines().skip(1) {
+        let Some((date, value)) = line.split_once(',') else {
+            continue;
+        };
+        let date = date.trim();
+        let value = value.trim();
+
+        if !looks_like_iso_date(date) || value.is_empty() || value == "." {
+            continue;
+        }
+
+        let close = value.parse::<f64>().map_err(|error| {
+            FlexClientError::Fatal(format!("Benchmark returned an invalid close value. {error}"))
+        })?;
+
+        if date < start {
+            prior = Some((date.to_string(), close));
+            continue;
+        }
+
+        if date <= end {
+            rows.push((date.to_string(), close));
+        } else {
+            break;
+        }
+    }
+
+    if let Some(row) = prior {
+        rows.insert(0, row);
+    }
+
+    if rows.len() < 2 {
+        return Err(FlexClientError::Fatal(
+            "Benchmark did not return enough price history for the report range.".to_string(),
+        ));
+    }
+
+    Ok(BenchmarkFetchResponse {
+        symbol: series.symbol,
+        dates: rows.iter().map(|(date, _)| date.clone()).collect(),
+        closes: rows.iter().map(|(_, close)| *close).collect(),
+        source: "fred",
+    })
+}
+
+fn looks_like_iso_date(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit())
 }
 
 async fn fetch_report_with_client(
@@ -311,7 +470,7 @@ impl FlexStatus {
 
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![flex_fetch])
+        .invoke_handler(tauri::generate_handler![flex_fetch, benchmark_fetch])
         .run(tauri::generate_context!())
         .expect("error while running IBKR Analytics Studio");
 }

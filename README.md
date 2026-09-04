@@ -11,7 +11,7 @@
 Releases 推荐上传这个文件给普通 macOS 用户：
 
 ```text
-IBKR-Analytics-Studio-2.1.25-macos-arm64.dmg
+IBKR-Analytics-Studio-2.2.0-macos-arm64.dmg
 ```
 
 安装方式：
@@ -148,14 +148,15 @@ Breakout by Day? -> Yes
 
 持仓表的“股息”列会按标的汇总已支付股息，并在没有现金股息记录时显示股息应计净额。Flex Query 需要包含 `Cash Transactions` 和 `Change in Dividend Accruals`。在 `Cash Transactions` 里选择 Dividends / Payment in Lieu of Dividends 相关字段；如果只配置了持仓和交易区块，这一列会显示为 0。
 
-### S&P 500 基准叠加
+### Return Curve Benchmark
 
-收益率曲线会尝试叠加同期 S&P 500 收益率，帮助对比账户表现和市场基准。
+收益率曲线可以选择叠加同期 S&P 500 或 NASDAQ 收益率，帮助对比账户表现和市场基准。
 
 - 组合收益率：按 IBKR 每日 TWR 累乘，正收益为绿色，负收益为红色。
-- S&P 500：统一显示为紫色细线。
-- 基准数据来自 Cloudflare Worker 代理的 FRED `SP500` 序列。
-- 若 Worker 未部署、CORS 未放行或数据暂不可用，页面会继续显示账户曲线，不阻塞本地报表查看。
+- Benchmark：可选择 No Benchmark / S&P 500 / NASDAQ，一次只显示一条基准曲线。
+- S&P 500 与 NASDAQ：统一显示为紫色线，鼠标悬停时显示同日 Portfolio TWR 和 Benchmark 收益率。
+- 基准数据来自 FRED `SP500` / `NASDAQCOM` 序列。桌面版会优先尝试 Worker，若 Worker 未部署、CORS 未放行或返回了旧格式数据，会通过本机后端直连 FRED 作为备用。
+- 若基准数据暂不可用，页面会继续显示账户曲线，不阻塞本地报表查看。
 
 ### Open Positions
 
@@ -278,7 +279,7 @@ npm run tauri:dmg
 输出位置：
 
 ```text
-outputs/IBKR-Analytics-Studio-2.1.25-macos-arm64.dmg
+outputs/IBKR-Analytics-Studio-2.2.0-macos-arm64.dmg
 ```
 
 ### Flex API 和 IB Gateway 的区别
@@ -293,19 +294,22 @@ IB Gateway 属于 TWS API/交易网关，通常用于行情、下单、账户实
 npm run check
 ```
 
-## S&P 500 Worker
+## Benchmark Worker
 
-S&P 500 基准数据代理位于：
+Return Curve 使用的 S&P 500 / NASDAQ 基准数据代理位于：
 
 ```text
 cloudflare\sp500-proxy
 ```
 
-Worker 会把 FRED `SP500` 收盘价缓存到 Cloudflare KV，普通查询只读取 KV：
+Worker 会把 FRED `SP500` 和 `NASDAQCOM` 收盘价缓存到 Cloudflare KV，普通查询只读取 KV：
 
 ```text
-https://sp500-proxy.3368517784.workers.dev/?start=2025-12-24&end=2026-06-02
+https://sp500-proxy.3368517784.workers.dev/?symbol=sp500&start=2025-12-24&end=2026-06-02
+https://sp500-proxy.3368517784.workers.dev/?symbol=nasdaq&start=2025-12-24&end=2026-06-02
 ```
+
+macOS 桌面版还内置 FRED 直连备用通道。即使线上 Worker 尚未升级到 NASDAQ，多数情况下已安装的桌面 App 仍可显示 NASDAQ 基准曲线。
 
 部署前需要在 `wrangler.toml` 中替换真实 KV namespace id，并在 Cloudflare 中配置：
 
@@ -316,10 +320,12 @@ https://sp500-proxy.3368517784.workers.dev/?start=2025-12-24&end=2026-06-02
 手动同步接口受密钥保护：
 
 ```text
-GET /admin/sync?key=<SYNC_SECRET>
+GET /admin/sync?key=<SYNC_SECRET>&symbol=all
+GET /admin/sync?key=<SYNC_SECRET>&symbol=sp500
+GET /admin/sync?key=<SYNC_SECRET>&symbol=nasdaq
 ```
 
-WebView2 桌面端使用 `https://ibkr-analytics.local` 加载页面，Worker 的 CORS 白名单需要包含这个 origin，否则前端会拿不到 S&P 500 叠加线。
+桌面端和本地预览的来源需要在 Worker 的 CORS 白名单中，例如 `https://ibkr-analytics.local`、`http://tauri.localhost`、`tauri://localhost`、`http://127.0.0.1:4187`，否则前端会拿不到 Benchmark 叠加线。
 
 ## 构建 Windows 应用
 
@@ -382,21 +388,21 @@ ibkr-analytics-studio-offline/
 ## 核心文件
 
 - `src/parser.js`: IBKR CSV/Flex CSV 解析、盈亏、持仓、交易、NAV、TWR 数据处理。
-- `src/app.js`: 页面渲染、交互、Flex API 面板、报表暂存、S&P 500 基准叠加、JSON/PNG 导出。
+- `src/app.js`: 页面渲染、交互、Flex API 面板、报表暂存、Benchmark 基准叠加、JSON/PNG 导出。
 - `assets/styles.css`: 页面样式、深色主题、响应式布局。
 - `src-tauri/src/lib.rs`: macOS/Tauri Flex API 原生桥接、代理路由和报表拉取。
 - `scripts/build-macos-dmg.sh`: macOS `.dmg` 分发包构建脚本。
-- `cloudflare/sp500-proxy/index.js`: S&P 500/FRED 数据代理、KV 缓存、定时同步和手动同步接口。
+- `cloudflare/sp500-proxy/index.js`: S&P 500 / NASDAQ 的 FRED 数据代理、KV 缓存、定时同步和手动同步接口。
 - `windows/IBKRAnalyticsStudio.WebView2/MainForm.cs`: Windows WebView2 壳、Flex API 原生桥接、窗口主题。
 - `windows/IBKRAnalyticsStudio.WebView2/FlexApiClient.cs`: IBKR Flex Web Service 请求逻辑。
-- `docs/sp500-benchmark-implementation.md`: S&P 500 基准叠加实现记录。
+- `docs/sp500-benchmark-implementation.md`: Return Curve Benchmark 叠加实现记录。
 
 ## 隐私与安全
 
 - CSV 报表解析在本机完成。
 - Flex API 请求只发送到 IBKR 官方 Flex Web Service。
 - Token 和 Query ID 只保存在本机桌面 App 的 localStorage。
-- S&P 500 基准请求只发送日期范围，不发送账户、持仓、交易或 NAV 数据。
+- Benchmark 请求只发送日期范围和所选指数，不发送账户、持仓、交易或 NAV 数据。
 - JSON/PNG 只有用户主动点击时才生成。
 - 不建议把真实报表、Token、账号明文提交到公开仓库或聊天记录。
 

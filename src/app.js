@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.1.25";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.1.25";
-import { parseIbkrReport } from "./parser.js?v=2.1.25";
+import { decodeReportFile } from "./encoding.js?v=2.2.0";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.0";
+import { parseIbkrReport } from "./parser.js?v=2.2.0";
 
 const app = document.querySelector("#app");
 
@@ -351,7 +351,7 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.1.25";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.0";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9", "#67e8f9", "#5eead4"];
@@ -361,8 +361,14 @@ const FLEX_QUERY_ID_STORAGE_KEY = "ibkr-flex-query-id";
 const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
-const SP500_BENCHMARK_URL = "https://sp500-proxy.3368517784.workers.dev";
-const APP_VERSION = "2.1.25";
+const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
+const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark";
+const BENCHMARK_OPTIONS = {
+  none: { id: "none", label: "No Benchmark", shortLabel: "None" },
+  sp500: { id: "sp500", label: "S&P 500", shortLabel: "S&P 500" },
+  nasdaq: { id: "nasdaq", label: "NASDAQ", shortLabel: "NASDAQ" }
+};
+const APP_VERSION = "2.2.0";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -382,6 +388,17 @@ function normalizeFlexQueryId(value) {
   const text = String(value || "").trim();
   const match = text.match(/\d{3,}/);
   return match ? match[0] : text;
+}
+
+function normalizeBenchmarkKey(value) {
+  const key = String(value || "").toLowerCase();
+  if (key === "spx" || key === "sp500" || key === "s&p500" || key === "s&p 500") return "sp500";
+  if (key === "nasdaq" || key === "nasdaqcom" || key === "ixic") return "nasdaq";
+  return BENCHMARK_OPTIONS[key] ? key : "";
+}
+
+function normalizeBenchmarkSelection(value) {
+  return normalizeBenchmarkKey(value) || "sp500";
 }
 
 const state = {
@@ -413,7 +430,8 @@ const state = {
   shareHideNav: localStorage.getItem("ibkr-share-hide-nav") === "1",
   language: localStorage.getItem("ibkr-analytics-language") === "en" ? "en" : "zh",
   theme: localStorage.getItem("ibkr-analytics-theme") === "dark" ? "dark" : "light",
-  benchmark: null
+  benchmarkSelection: normalizeBenchmarkSelection(localStorage.getItem(BENCHMARK_STORAGE_KEY) || "sp500"),
+  benchmarkData: null
 };
 
 applyTheme();
@@ -916,7 +934,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.1.25" alt="" />
+        <img src="./assets/app-logo.png?v=2.2.0" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -937,6 +955,19 @@ function renderLanguageSwitch() {
       <button class="language-option${state.language === "zh" ? " is-active" : ""}" type="button" data-language="zh">中</button>
       <button class="language-option${state.language === "en" ? " is-active" : ""}" type="button" data-language="en">EN</button>
     </div>
+  `;
+}
+
+function renderBenchmarkSelector() {
+  return `
+    <label class="benchmark-select-label">
+      <span>Benchmark</span>
+      <select class="benchmark-select" id="benchmarkSelect" aria-label="Benchmark">
+        ${Object.values(BENCHMARK_OPTIONS).map((option) => `
+          <option value="${escapeAttribute(option.id)}"${state.benchmarkSelection === option.id ? " selected" : ""}>${escapeHtml(option.label)}</option>
+        `).join("")}
+      </select>
+    </label>
   `;
 }
 
@@ -1015,19 +1046,24 @@ function renderOverview(data) {
       </div>
       <div class="grid-12">
         <section class="dashboard-card span-6">
-          <div class="card-header"><h2>资产配置</h2><span class="pill">${currency}</span></div>
+          <div class="card-header"><h2>资产配置</h2></div>
           ${renderAllocation(portfolioAllocation, currency)}
         </section>
         <section class="dashboard-card span-6">
-          <div class="card-header"><h2>币种敞口</h2><span class="pill">${currency}</span></div>
+          <div class="card-header"><h2>币种敞口</h2></div>
           ${renderAllocation(data.currencyExposure, currency)}
         </section>
         <section class="dashboard-card span-7 return-curve-card">
-          <div class="card-header"><h2>收益率曲线</h2><span class="pill">${currency}</span></div>
-          ${renderReturnCurve(data, currency, state.benchmark, returnStatus)}
+          <div class="card-header">
+            <h2>收益率曲线</h2>
+            <div class="return-card-actions">
+              ${renderBenchmarkSelector()}
+            </div>
+          </div>
+          ${renderReturnCurve(data, currency, state.benchmarkData, returnStatus, state.benchmarkSelection)}
         </section>
         <section class="dashboard-card span-5">
-          <div class="card-header"><h2>资产配置占比</h2><span class="pill">${currency}</span></div>
+          <div class="card-header"><h2>资产配置占比</h2></div>
           ${renderAllocationPie(portfolioAllocation, currency)}
         </section>
       </div>
@@ -1552,12 +1588,14 @@ function buildBenchmarkRows(benchmark, portfolioRows) {
   const baseClose = findClosestClose(benchmark, firstPortfolioDate);
   if (!baseClose) return null;
 
-  return portfolioRows.map((row) => {
+  const alignedRows = portfolioRows.map((row, index) => {
     const close = findClosestClose(benchmark, row.date);
     if (close === null) return null;
     const returnRate = ((close / baseClose) - 1) * 100;
-    return { date: row.date, returnRate, close };
+    return { date: row.date, index, returnRate, close };
   }).filter(Boolean);
+
+  return alignedRows.length >= 2 ? alignedRows : null;
 }
 
 function findClosestClose(benchmark, targetDate) {
@@ -1578,35 +1616,25 @@ function findClosestClose(benchmark, targetDate) {
   return best;
 }
 
-function buildBenchmarkPath(benchmarkRows, width, height, paddingLeft, paddingRight, paddingTop, paddingBottom, minValue, maxValue, zeroY) {
-  if (!benchmarkRows || benchmarkRows.length < 2) return "";
-
-  const chartRight = width - paddingRight;
-  const chartHeight = height - paddingTop - paddingBottom;
-  const xFor = (index) => paddingLeft + (index / (benchmarkRows.length - 1)) * (chartRight - paddingLeft);
-  const yFor = (value) => paddingTop + ((maxValue - value) / (maxValue - minValue)) * chartHeight;
-
-  const points = benchmarkRows.map((row, index) => ({
-    ...row,
-    x: xFor(index),
-    y: yFor(row.returnRate)
-  }));
-  const signedPaths = buildSignedReturnPaths(points, zeroY);
-
-  return [
-    ...signedPaths.positiveLines.map((path) => `<path class="return-benchmark return-benchmark-positive" d="${escapeAttribute(path)}"></path>`),
-    ...signedPaths.negativeLines.map((path) => `<path class="return-benchmark return-benchmark-negative" d="${escapeAttribute(path)}"></path>`)
-  ].join("");
+function buildBenchmarkPath(points) {
+  if (!points || points.length < 2) return "";
+  const path = points.map((point, index) => {
+    const command = index === 0 ? "M" : "L";
+    return `${command}${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
+  }).join(" ");
+  return `<path class="return-benchmark" d="${escapeAttribute(path)}"></path>`;
 }
 
-function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(data)) {
+function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(data), benchmarkSelection = "sp500") {
   const rows = status.rows || [];
 
   if (!status.isReliable) {
     return renderReturnCurveUnavailable(status.message);
   }
 
-  const benchmarkRows = buildBenchmarkRows(benchmark, rows);
+  const benchmarkOption = BENCHMARK_OPTIONS[benchmarkSelection] || BENCHMARK_OPTIONS.sp500;
+  const shouldShowBenchmark = benchmarkOption.id !== "none";
+  const benchmarkRows = shouldShowBenchmark ? buildBenchmarkRows(benchmark, rows) : null;
 
   const width = 680;
   const height = 250;
@@ -1640,8 +1668,33 @@ function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(
   const high = points.reduce((best, row) => row.returnRate > best.returnRate ? row : best, points[0]);
   const low = points.reduce((worst, row) => row.returnRate < worst.returnRate ? row : worst, points[0]);
   const gridValues = axis.ticks;
+  const gridLineValues = gridValues.filter((value) => {
+    const y = yFor(value);
+    return Math.abs(y - paddingTop) > 0.5 && Math.abs(y - (height - paddingBottom)) > 0.5;
+  });
+  const benchmarkPoints = benchmarkRows
+    ? benchmarkRows.map((row) => ({
+      ...row,
+      x: xFor(row.index, rows.length),
+      y: yFor(row.returnRate)
+    }))
+    : [];
+  const benchmarkByIndex = new Map(benchmarkPoints.map((row) => [row.index, row]));
+  const hoverPoints = points.map((point, index) => {
+    const benchmarkPoint = benchmarkByIndex.get(index);
+    return {
+      date: point.date,
+      portfolioReturn: point.returnRate,
+      portfolioX: point.x,
+      portfolioY: point.y,
+      benchmarkReturn: benchmarkPoint ? benchmarkPoint.returnRate : null,
+      benchmarkY: benchmarkPoint ? benchmarkPoint.y : null,
+      benchmarkLabel: benchmarkPoint ? benchmarkOption.shortLabel : ""
+    };
+  });
 
-  const benchmarkPath = buildBenchmarkPath(benchmarkRows, width, height, paddingLeft, paddingRight, paddingTop, paddingBottom, minValue, maxValue, zeroY);
+  const benchmarkPath = buildBenchmarkPath(benchmarkPoints);
+  const benchmarkLastPoint = benchmarkPoints.at(-1);
 
   return `
     <div class="return-curve">
@@ -1663,28 +1716,46 @@ function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(
           <strong class="${valueClass(low.returnRate)}">${formatSignedPercent(low.returnRate)}</strong>
         </div>
       </div>
-      <svg class="return-curve-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="收益率曲线">
-        ${gridValues.map((value) => {
-          const y = yFor(value);
-          return `
-            <g class="return-grid">
-              <line x1="${paddingLeft}" y1="${y.toFixed(2)}" x2="${chartRight}" y2="${y.toFixed(2)}"></line>
-              <text x="${width - 22}" y="${(y + 4).toFixed(2)}">${escapeHtml(formatSignedPercent(value))}</text>
-            </g>
-          `;
-        }).join("")}
-        <line class="return-zero-line" x1="${paddingLeft}" y1="${zeroY.toFixed(2)}" x2="${chartRight}" y2="${zeroY.toFixed(2)}"></line>
-        ${benchmarkPath}
-        ${signedPaths.positiveLines.map((path) => `<path class="return-line return-line-positive" d="${escapeAttribute(path)}"></path>`).join("")}
-        ${signedPaths.negativeLines.map((path) => `<path class="return-line return-line-negative" d="${escapeAttribute(path)}"></path>`).join("")}
-        <text class="return-axis-label" x="${paddingLeft}" y="${height - 12}">${escapeHtml(formatDate(firstPoint.date))}</text>
-        <text class="return-axis-label is-end" x="${chartRight}" y="${height - 12}">${escapeHtml(formatDate(lastPoint.date))}</text>
-      </svg>
-      ${benchmarkRows ? `
+      <div
+        class="return-curve-chart"
+        data-return-curve
+        data-chart-width="${width}"
+        data-chart-height="${height}"
+        data-chart-top="${paddingTop}"
+        data-chart-bottom="${height - paddingBottom}"
+        data-return-points="${escapeAttribute(JSON.stringify(hoverPoints))}"
+        tabindex="0"
+      >
+        <svg class="return-curve-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="收益率曲线">
+          ${gridLineValues.map((value) => {
+            const y = yFor(value);
+            return `
+              <g class="return-grid">
+                <line x1="${paddingLeft}" y1="${y.toFixed(2)}" x2="${chartRight}" y2="${y.toFixed(2)}"></line>
+                <text x="${width - 22}" y="${(y + 4).toFixed(2)}">${escapeHtml(formatSignedPercent(value))}</text>
+              </g>
+            `;
+          }).join("")}
+          <line class="return-zero-line" x1="${paddingLeft}" y1="${zeroY.toFixed(2)}" x2="${chartRight}" y2="${zeroY.toFixed(2)}"></line>
+          ${benchmarkPath}
+          ${signedPaths.positiveLines.map((path) => `<path class="return-line return-line-positive" d="${escapeAttribute(path)}"></path>`).join("")}
+          ${signedPaths.negativeLines.map((path) => `<path class="return-line return-line-negative" d="${escapeAttribute(path)}"></path>`).join("")}
+          <g class="return-hover-layer" aria-hidden="true">
+            <line class="return-hover-crosshair" x1="0" y1="${paddingTop}" x2="0" y2="${height - paddingBottom}"></line>
+            <circle class="return-hover-point return-hover-portfolio" cx="0" cy="0" r="4.5"></circle>
+            <circle class="return-hover-point return-hover-benchmark" cx="0" cy="0" r="4.5"></circle>
+          </g>
+          <rect class="return-hover-capture" x="${paddingLeft}" y="${paddingTop}" width="${chartRight - paddingLeft}" height="${chartHeight}"></rect>
+          <text class="return-axis-label" x="${paddingLeft}" y="${height - 12}">${escapeHtml(formatDate(firstPoint.date))}</text>
+          <text class="return-axis-label is-end" x="${chartRight}" y="${height - 12}">${escapeHtml(formatDate(lastPoint.date))}</text>
+        </svg>
+        <div class="return-hover-tooltip" role="tooltip"></div>
+      </div>
+      ${shouldShowBenchmark && benchmarkLastPoint ? `
         <div class="return-curve-legend">
           <span class="legend-item legend-portfolio"><span class="legend-dot"></span>Portfolio</span>
-          <span class="legend-item legend-benchmark"><span class="legend-dot"></span>S&P 500</span>
-          <span class="legend-item legend-benchmark-value">${formatSignedPercent(benchmarkRows[benchmarkRows.length - 1].returnRate)}</span>
+          <span class="legend-item legend-benchmark"><span class="legend-dot"></span>${escapeHtml(benchmarkOption.shortLabel)}</span>
+          <span class="legend-item legend-benchmark-value">${formatSignedPercent(benchmarkLastPoint.returnRate)}</span>
         </div>
       ` : ""}
       <p class="return-curve-note">按 IBKR 每日 TWR 累乘计算，已剔除入金、出金等外部现金流影响。</p>
@@ -2147,6 +2218,7 @@ function bindDashboardEvents() {
   document.querySelector("#dashboardFlexRefreshButton")?.addEventListener("click", refreshFlexReportFromDashboard);
   document.querySelector("#mobileFlexRefreshButton")?.addEventListener("click", refreshFlexReportFromDashboard);
   bindPieTooltips();
+  bindReturnCurveHover();
   document.querySelectorAll("[data-update-download]").forEach((button) => {
     button.addEventListener("click", openUpdateDownload);
   });
@@ -2183,6 +2255,16 @@ function bindDashboardEvents() {
   document.querySelector("#dailyMonthSelect")?.addEventListener("change", (event) => {
     state.dailyMonth = event.currentTarget.value || "";
     renderDashboard();
+  });
+
+  document.querySelector("#benchmarkSelect")?.addEventListener("change", (event) => {
+    const nextSelection = normalizeBenchmarkSelection(event.currentTarget.value);
+    if (nextSelection === state.benchmarkSelection) return;
+    state.benchmarkSelection = nextSelection;
+    state.benchmarkData = null;
+    localStorage.setItem(BENCHMARK_STORAGE_KEY, state.benchmarkSelection);
+    renderDashboard();
+    fetchBenchmark(state.data);
   });
 
   document.querySelector("#downloadShareImageButton")?.addEventListener("click", downloadShareImage);
@@ -2244,6 +2326,118 @@ function bindPieTooltips() {
       });
     });
     target.addEventListener("blur", hideTooltip);
+  });
+}
+
+function bindReturnCurveHover() {
+  const chart = document.querySelector("[data-return-curve]");
+  if (!chart) return;
+
+  let points = [];
+  try {
+    points = JSON.parse(chart.dataset.returnPoints || "[]");
+  } catch {
+    points = [];
+  }
+  if (!points.length) return;
+
+  const svg = chart.querySelector(".return-curve-svg");
+  const tooltip = chart.querySelector(".return-hover-tooltip");
+  const crosshair = chart.querySelector(".return-hover-crosshair");
+  const portfolioMarker = chart.querySelector(".return-hover-portfolio");
+  const benchmarkMarker = chart.querySelector(".return-hover-benchmark");
+  const chartWidth = Number(chart.dataset.chartWidth) || 680;
+  const chartHeight = Number(chart.dataset.chartHeight) || 250;
+  const chartTop = Number(chart.dataset.chartTop) || 24;
+  const chartBottom = Number(chart.dataset.chartBottom) || 202;
+  if (!svg || !tooltip || !crosshair || !portfolioMarker || !benchmarkMarker) return;
+
+  let activeIndex = points.length - 1;
+
+  const nearestPoint = (clientX) => {
+    const rect = svg.getBoundingClientRect();
+    const viewX = ((clientX - rect.left) / Math.max(1, rect.width)) * chartWidth;
+    return points.reduce((best, point, index) => {
+      const distance = Math.abs(point.portfolioX - viewX);
+      return distance < best.distance ? { point, index, distance } : best;
+    }, { point: points[0], index: 0, distance: Infinity });
+  };
+
+  const setMarker = (marker, x, y, visible = true) => {
+    marker.setAttribute("cx", String(x || 0));
+    marker.setAttribute("cy", String(y || 0));
+    marker.style.display = visible ? "" : "none";
+  };
+
+  const renderTooltip = (point) => {
+    const benchmarkValue = Number(point.benchmarkReturn);
+    const hasBenchmark = Number.isFinite(benchmarkValue) && point.benchmarkLabel;
+    tooltip.innerHTML = `
+      <strong>${escapeHtml(formatDate(point.date))}</strong>
+      <span><b>Portfolio TWR</b><em class="${valueClass(point.portfolioReturn)}">${escapeHtml(formatSignedPercent(point.portfolioReturn))}</em></span>
+      ${hasBenchmark ? `<span><b>${escapeHtml(point.benchmarkLabel)}</b><em class="${valueClass(benchmarkValue)}">${escapeHtml(formatSignedPercent(benchmarkValue))}</em></span>` : ""}
+    `;
+  };
+
+  const positionTooltip = (point) => {
+    const chartRect = chart.getBoundingClientRect();
+    const svgRect = svg.getBoundingClientRect();
+    const left = svgRect.left - chartRect.left + (point.portfolioX / chartWidth) * svgRect.width;
+    const benchmarkY = Number(point.benchmarkY);
+    const anchorY = Math.min(
+      Number(point.portfolioY),
+      Number.isFinite(benchmarkY) ? benchmarkY : Number(point.portfolioY)
+    );
+    const top = svgRect.top - chartRect.top + (anchorY / chartHeight) * svgRect.height;
+    const tooltipWidth = tooltip.offsetWidth || 190;
+    const clampedLeft = Math.min(
+      chartRect.width - tooltipWidth / 2 - 8,
+      Math.max(tooltipWidth / 2 + 8, left)
+    );
+    tooltip.style.left = `${clampedLeft}px`;
+    tooltip.style.top = `${Math.max(10, top - 10)}px`;
+  };
+
+  const showPoint = (point) => {
+    chart.classList.add("is-hovering");
+    crosshair.setAttribute("x1", String(point.portfolioX));
+    crosshair.setAttribute("x2", String(point.portfolioX));
+    crosshair.setAttribute("y1", String(chartTop));
+    crosshair.setAttribute("y2", String(chartBottom));
+    setMarker(portfolioMarker, point.portfolioX, point.portfolioY);
+    const benchmarkY = Number(point.benchmarkY);
+    setMarker(benchmarkMarker, point.portfolioX, benchmarkY, Number.isFinite(benchmarkY));
+    renderTooltip(point);
+    positionTooltip(point);
+    tooltip.classList.add("is-visible");
+  };
+
+  const hidePoint = () => {
+    chart.classList.remove("is-hovering");
+    tooltip.classList.remove("is-visible");
+  };
+
+  chart.addEventListener("pointerenter", (event) => {
+    const nearest = nearestPoint(event.clientX);
+    activeIndex = nearest.index;
+    showPoint(nearest.point);
+  });
+
+  chart.addEventListener("pointermove", (event) => {
+    const nearest = nearestPoint(event.clientX);
+    activeIndex = nearest.index;
+    showPoint(nearest.point);
+  });
+
+  chart.addEventListener("pointerleave", hidePoint);
+  chart.addEventListener("focus", () => showPoint(points[activeIndex] || points.at(-1)));
+  chart.addEventListener("blur", hidePoint);
+  chart.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    activeIndex += event.key === "ArrowRight" ? 1 : -1;
+    activeIndex = Math.max(0, Math.min(points.length - 1, activeIndex));
+    showPoint(points[activeIndex]);
   });
 }
 
@@ -2333,6 +2527,35 @@ function localizeUiString(value) {
 
 function getTauriInvoke() {
   return window.__TAURI__?.core?.invoke || null;
+}
+
+async function fetchBenchmarkJson(url, selection, startDate, endDate) {
+  try {
+    const response = await fetch(url);
+    if (response.ok) {
+      const json = await response.json();
+      if (isBenchmarkResponseForSelection(json, selection)) return json;
+    }
+  } catch {
+    // The packaged macOS app may be blocked by Worker CORS; fall back to Tauri.
+  }
+
+  const invoke = getTauriInvoke();
+  if (typeof invoke !== "function") return null;
+
+  const raw = await invoke("benchmark_fetch", {
+    symbol: selection,
+    start: startDate,
+    end: endDate
+  });
+
+  return JSON.parse(raw || "{}");
+}
+
+function isBenchmarkResponseForSelection(json, selection) {
+  if (!json || !json.dates || !json.closes || json.dates.length < 2) return false;
+  const responseSymbol = normalizeBenchmarkKey(json.symbol);
+  return responseSymbol ? responseSymbol === selection : selection === "sp500";
 }
 
 function canUseTauriBridge() {
@@ -2773,7 +2996,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.1.25");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.0");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -2853,13 +3076,17 @@ function resetReport() {
   state.search = "";
   state.sourceName = "";
   state.reportFingerprint = "";
-  state.benchmark = null;
+  state.benchmarkData = null;
   renderUpload();
 }
 
-async function fetchBenchmark(parsed) {
+async function fetchBenchmark(parsed = state.data) {
   const requestId = ++benchmarkRequestId;
-  state.benchmark = null;
+  const selection = normalizeBenchmarkSelection(state.benchmarkSelection);
+  state.benchmarkData = null;
+  if (!parsed) return;
+  if (selection === "none") return;
+
   const navHistory = parsed.navHistory || [];
   const flowRows = navHistory.filter((row) => row.flowAdjusted && row.date);
   if (flowRows.length < 2) return;
@@ -2868,14 +3095,20 @@ async function fetchBenchmark(parsed) {
   const endDate = flowRows[flowRows.length - 1].date;
 
   try {
-    const url = `${SP500_BENCHMARK_URL}?start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
-    const response = await fetch(url);
-    if (!response.ok) return;
-    const json = await response.json();
-    if (requestId !== benchmarkRequestId || state.data !== parsed) return;
+    const url = `${BENCHMARK_PROXY_URL}?symbol=${encodeURIComponent(selection)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
+    const json = await fetchBenchmarkJson(url, selection, startDate, endDate);
+    if (!json) return;
+    if (requestId !== benchmarkRequestId || state.data !== parsed || state.benchmarkSelection !== selection) return;
+    const responseSymbol = normalizeBenchmarkKey(json.symbol);
+    if (responseSymbol && responseSymbol !== selection) return;
+    if (!responseSymbol && selection !== "sp500") return;
     if (json.dates && json.closes && json.dates.length >= 2) {
       if (startDate !== flowRows[0].date || endDate !== flowRows[flowRows.length - 1].date) return;
-      state.benchmark = json;
+      state.benchmarkData = {
+        symbol: selection,
+        dates: json.dates,
+        closes: json.closes
+      };
       renderDashboard();
     }
   } catch {
