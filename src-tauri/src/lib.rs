@@ -1,11 +1,14 @@
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use reqwest::{Client, Proxy, StatusCode, Url};
 use serde::Serialize;
+use std::collections::HashSet;
 use std::net::{SocketAddr, TcpStream};
+use std::process::Command;
 use std::time::Duration;
 
-const APP_VERSION: &str = "2.2.4";
-const FLEX_BASE_URL: &str = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService";
+const APP_VERSION: &str = "2.2.5";
+const FLEX_BASE_URL: &str =
+    "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService";
 const FRED_GRAPH_CSV_URL: &str = "https://fred.stlouisfed.org/graph/fredgraph.csv";
 const RETRY_DELAYS: [u64; 6] = [1, 2, 4, 8, 12, 16];
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -123,19 +126,25 @@ async fn fetch_fred_benchmark_with_client(
     start: &str,
     end: &str,
 ) -> Result<BenchmarkFetchResponse, FlexClientError> {
-    let url = Url::parse_with_params(FRED_GRAPH_CSV_URL, &[("id", series.fred_id)])
-        .map_err(|error| FlexClientError::Fatal(format!("Could not build the benchmark URL. {error}")))?;
+    let url =
+        Url::parse_with_params(FRED_GRAPH_CSV_URL, &[("id", series.fred_id)]).map_err(|error| {
+            FlexClientError::Fatal(format!("Could not build the benchmark URL. {error}"))
+        })?;
     let response = client
         .get(url)
-        .header(USER_AGENT, format!("IBKRAnalyticsStudio/{APP_VERSION} Tauri"))
+        .header(
+            USER_AGENT,
+            format!("IBKRAnalyticsStudio/{APP_VERSION} Tauri"),
+        )
         .send()
         .await
-        .map_err(|error| FlexClientError::Transport(format!("Benchmark request failed. {error}")))?;
+        .map_err(|error| {
+            FlexClientError::Transport(format!("Benchmark request failed. {error}"))
+        })?;
     let status_code = response.status();
-    let body = response
-        .text()
-        .await
-        .map_err(|error| FlexClientError::Fatal(format!("Benchmark returned an unreadable body. {error}")))?;
+    let body = response.text().await.map_err(|error| {
+        FlexClientError::Fatal(format!("Benchmark returned an unreadable body. {error}"))
+    })?;
 
     if !status_code.is_success() {
         return Err(FlexClientError::Fatal(format!(
@@ -150,9 +159,7 @@ async fn fetch_fred_benchmark_with_client(
 
 fn benchmark_series(symbol: &str) -> Result<BenchmarkSeries, String> {
     match symbol.trim().to_ascii_lowercase().as_str() {
-        "sp500" | "spx" | "s&p500" | "s&p 500" => Ok(BenchmarkSeries {
-            fred_id: "SP500",
-        }),
+        "sp500" | "spx" | "s&p500" | "s&p 500" => Ok(BenchmarkSeries { fred_id: "SP500" }),
         _ => Err("Unsupported benchmark symbol.".to_string()),
     }
 }
@@ -177,7 +184,9 @@ fn parse_fred_benchmark_csv(
         }
 
         let close = value.parse::<f64>().map_err(|error| {
-            FlexClientError::Fatal(format!("Benchmark returned an invalid close value. {error}"))
+            FlexClientError::Fatal(format!(
+                "Benchmark returned an invalid close value. {error}"
+            ))
         })?;
 
         if date < start {
@@ -232,6 +241,13 @@ async fn fetch_report_with_client(
 
 fn build_flex_clients() -> Result<Vec<(String, Client)>, String> {
     let mut routes = Vec::new();
+    let mut seen_proxy_urls = HashSet::new();
+
+    for (label, proxy_url, port) in system_proxy_routes() {
+        if is_local_port_open(port) {
+            add_proxy_route(&mut routes, &mut seen_proxy_urls, &label, &proxy_url);
+        }
+    }
 
     for (label, proxy_url, port) in [
         ("Veee HTTP proxy", "http://127.0.0.1:15236", 15236),
@@ -242,7 +258,7 @@ fn build_flex_clients() -> Result<Vec<(String, Client)>, String> {
         ("Local SOCKS proxy 1080", "socks5h://127.0.0.1:1080", 1080),
     ] {
         if is_local_port_open(port) {
-            routes.push((label.to_string(), Some(proxy_url.to_string())));
+            add_proxy_route(&mut routes, &mut seen_proxy_urls, label, proxy_url);
         }
     }
 
@@ -270,28 +286,116 @@ fn build_flex_clients() -> Result<Vec<(String, Client)>, String> {
         .collect()
 }
 
+fn add_proxy_route(
+    routes: &mut Vec<(String, Option<String>)>,
+    seen_proxy_urls: &mut HashSet<String>,
+    label: &str,
+    proxy_url: &str,
+) {
+    if seen_proxy_urls.insert(proxy_url.to_string()) {
+        routes.push((label.to_string(), Some(proxy_url.to_string())));
+    }
+}
+
+fn system_proxy_routes() -> Vec<(String, String, u16)> {
+    let output = match Command::new("/usr/sbin/scutil").arg("--proxy").output() {
+        Ok(output) if output.status.success() => output,
+        _ => return Vec::new(),
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut routes = Vec::new();
+
+    if proxy_enabled(&text, "HTTPEnable") {
+        if let Some((host, port)) = proxy_host_port(&text, "HTTPProxy", "HTTPPort") {
+            routes.push((
+                "System HTTP proxy".to_string(),
+                format!("http://{host}:{port}"),
+                port,
+            ));
+        }
+    }
+
+    if proxy_enabled(&text, "HTTPSEnable") {
+        if let Some((host, port)) = proxy_host_port(&text, "HTTPSProxy", "HTTPSPort") {
+            routes.push((
+                "System HTTPS proxy".to_string(),
+                format!("http://{host}:{port}"),
+                port,
+            ));
+        }
+    }
+
+    if proxy_enabled(&text, "SOCKSEnable") {
+        if let Some((host, port)) = proxy_host_port(&text, "SOCKSProxy", "SOCKSPort") {
+            routes.push((
+                "System SOCKS proxy".to_string(),
+                format!("socks5h://{host}:{port}"),
+                port,
+            ));
+        }
+    }
+
+    routes
+}
+
+fn proxy_enabled(text: &str, key: &str) -> bool {
+    scutil_value(text, key).is_some_and(|value| value == "1")
+}
+
+fn proxy_host_port(text: &str, host_key: &str, port_key: &str) -> Option<(String, u16)> {
+    let host = scutil_value(text, host_key)?;
+    let port = scutil_value(text, port_key)?.parse().ok()?;
+
+    if host.is_empty() || port == 0 {
+        return None;
+    }
+
+    Some((host.to_string(), port))
+}
+
+fn scutil_value<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+    text.lines().find_map(|line| {
+        let (name, value) = line.trim().split_once(':')?;
+        if name.trim() == key {
+            Some(value.trim())
+        } else {
+            None
+        }
+    })
+}
+
 fn is_local_port_open(port: u16) -> bool {
     let address = SocketAddr::from(([127, 0, 0, 1], port));
     TcpStream::connect_timeout(&address, Duration::from_millis(150)).is_ok()
 }
 
-async fn send_request(client: &Client, token: &str, query_id: &str) -> Result<String, FlexClientError> {
+async fn send_request(
+    client: &Client,
+    token: &str,
+    query_id: &str,
+) -> Result<String, FlexClientError> {
     let url = build_flex_url("SendRequest", token, query_id)?;
     let response = client
         .get(url)
-        .header(USER_AGENT, format!("IBKRAnalyticsStudio/{APP_VERSION} Tauri"))
+        .header(
+            USER_AGENT,
+            format!("IBKRAnalyticsStudio/{APP_VERSION} Tauri"),
+        )
         .send()
         .await
-        .map_err(|error| FlexClientError::Transport(format!(
-            "IBKR SendRequest failed. {}",
-            redact_token(&error.to_string(), token)
-        )))?;
+        .map_err(|error| {
+            FlexClientError::Transport(format!(
+                "IBKR SendRequest failed. {}",
+                redact_token(&error.to_string(), token)
+            ))
+        })?;
 
     let status_code = response.status();
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| FlexClientError::Fatal(format!("IBKR SendRequest returned an unreadable body. {error}")))?;
+    let bytes = response.bytes().await.map_err(|error| {
+        FlexClientError::Fatal(format!(
+            "IBKR SendRequest returned an unreadable body. {error}"
+        ))
+    })?;
     let body = decode_report(&bytes);
 
     if !status_code.is_success() {
@@ -304,7 +408,9 @@ async fn send_request(client: &Client, token: &str, query_id: &str) -> Result<St
 
     let status = parse_flex_status(&body)?;
     if !status.is_success || status.reference_code.trim().is_empty() {
-        return Err(FlexClientError::Fatal(status.to_user_message("IBKR could not generate the Flex report.")));
+        return Err(FlexClientError::Fatal(
+            status.to_user_message("IBKR could not generate the Flex report."),
+        ));
     }
 
     Ok(status.reference_code)
@@ -319,13 +425,18 @@ async fn get_statement_with_retry(
         let url = build_flex_url("GetStatement", token, reference_code)?;
         let response = client
             .get(url)
-            .header(USER_AGENT, format!("IBKRAnalyticsStudio/{APP_VERSION} Tauri"))
+            .header(
+                USER_AGENT,
+                format!("IBKRAnalyticsStudio/{APP_VERSION} Tauri"),
+            )
             .send()
             .await
-            .map_err(|error| FlexClientError::Transport(format!(
-                "IBKR GetStatement failed. {}",
-                redact_token(&error.to_string(), token)
-            )))?;
+            .map_err(|error| {
+                FlexClientError::Transport(format!(
+                    "IBKR GetStatement failed. {}",
+                    redact_token(&error.to_string(), token)
+                ))
+            })?;
 
         let status_code = response.status();
         let content_type = response
@@ -334,10 +445,11 @@ async fn get_statement_with_retry(
             .and_then(|value| value.to_str().ok())
             .unwrap_or("text/plain")
             .to_string();
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|error| FlexClientError::Fatal(format!("IBKR GetStatement returned an unreadable body. {error}")))?;
+        let bytes = response.bytes().await.map_err(|error| {
+            FlexClientError::Fatal(format!(
+                "IBKR GetStatement returned an unreadable body. {error}"
+            ))
+        })?;
         let body = decode_report(&bytes);
 
         if status_code.is_success() && !looks_like_flex_status(&body) {
@@ -360,13 +472,17 @@ async fn get_statement_with_retry(
         };
 
         if !should_retry(&status, status_code) || attempt == RETRY_DELAYS.len() {
-            return Err(FlexClientError::Fatal(status.to_user_message("IBKR could not retrieve the generated Flex report.")));
+            return Err(FlexClientError::Fatal(status.to_user_message(
+                "IBKR could not retrieve the generated Flex report.",
+            )));
         }
 
         tokio::time::sleep(Duration::from_secs(RETRY_DELAYS[attempt])).await;
     }
 
-    Err(FlexClientError::Fatal("IBKR report generation did not complete in time. Please try again shortly.".to_string()))
+    Err(FlexClientError::Fatal(
+        "IBKR report generation did not complete in time. Please try again shortly.".to_string(),
+    ))
 }
 
 fn build_flex_url(path: &str, token: &str, code: &str) -> Result<Url, String> {
@@ -395,7 +511,9 @@ fn redact_query_value(message: &str, key: &str) -> String {
 
     let rest = &message[start..];
     let end_offset = rest
-        .find(|character| character == '&' || character == ')' || character == ' ' || character == '\n')
+        .find(|character| {
+            character == '&' || character == ')' || character == ' ' || character == '\n'
+        })
         .unwrap_or(rest.len());
 
     format!("{}<redacted>{}", &message[..start], &rest[end_offset..])
@@ -451,9 +569,12 @@ fn child_text(node: roxmltree::Node<'_, '_>, name: &str) -> String {
 impl FlexStatus {
     fn to_user_message(&self, fallback: &str) -> String {
         if !self.error_code.trim().is_empty() || !self.error_message.trim().is_empty() {
-            return format!("IBKR Flex error {}: {}", self.error_code, self.error_message)
-                .trim()
-                .to_string();
+            return format!(
+                "IBKR Flex error {}: {}",
+                self.error_code, self.error_message
+            )
+            .trim()
+            .to_string();
         }
 
         fallback.to_string()

@@ -11,7 +11,7 @@
 Releases 页面提供以下 macOS 安装包：
 
 ```text
-IBKR-Analytics-Studio-2.2.4-macos-arm64.dmg
+IBKR-Analytics-Studio-2.2.5-macos-arm64.dmg
 ```
 
 安装方式：
@@ -52,7 +52,7 @@ IBKR Analytics Studio 是一个面向 Interactive Brokers 账户报表的本地�
 推荐直接下载本仓库 Releases 中的 macOS DMG：
 
 ```text
-IBKR-Analytics-Studio-2.2.4-macos-arm64.dmg
+IBKR-Analytics-Studio-2.2.5-macos-arm64.dmg
 ```
 
 安装后打开 `IBKR Analytics Studio.app`，参考首页教程获取 **IBKR Flex API**：
@@ -279,7 +279,7 @@ npm run tauri:dmg
 输出位置：
 
 ```text
-outputs/IBKR-Analytics-Studio-2.2.4-macos-arm64.dmg
+outputs/IBKR-Analytics-Studio-2.2.5-macos-arm64.dmg
 ```
 
 ### Flex API 和 IB Gateway 的区别
