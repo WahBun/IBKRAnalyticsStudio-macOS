@@ -2,38 +2,19 @@
 
 > Updated: 2026-09-05
 
-The Return Curve card can compare the portfolio TWR curve against one benchmark at a time:
-
-- No Benchmark
-- S&P 500
-- NASDAQ
-
-The portfolio curve still uses the existing positive/negative coloring. Benchmark curves use a single purple line so the visual meaning stays consistent: purple means market benchmark.
+The Return Curve card can compare the portfolio TWR curve against the S&P 500 benchmark.
 
 ## Frontend Behavior
 
 - The Benchmark selector is shown in the Return Curve card header.
 - The selected value is stored in `localStorage` as `ibkr-return-benchmark`.
 - `No Benchmark` disables benchmark requests and renders only the portfolio curve.
-- `S&P 500` and `NASDAQ` request the same portfolio date range from the Cloudflare Worker.
-- In the packaged macOS app, a Tauri fallback fetches FRED `SP500` / `NASDAQCOM` CSV data directly when the Worker is unavailable, blocked by CORS, or returns an old/mismatched response.
-- Hovering the chart snaps to the nearest portfolio date and shows:
-  - date
-  - Portfolio TWR
-  - selected benchmark return when available
+- `S&P 500` requests the same portfolio date range from the Cloudflare Worker.
+- In the packaged macOS app, a Tauri fallback fetches FRED `SP500` CSV data directly when the Worker is unavailable, blocked by CORS, or returns an old/mismatched response.
+- The app also ships with a recent S&P 500 cache under `assets/benchmarks/sp500.json` as a final fallback, so the benchmark line does not disappear when both remote paths fail.
+- Hovering the chart snaps to the nearest portfolio date and shows the date, Portfolio TWR, and S&P 500 return when available.
 - The vertical crosshair and markers are hover-only and do not affect the chart layout.
 - Benchmark fetch failures are silent; the portfolio curve remains usable.
-
-## Desktop Fallback
-
-The Tauri command `benchmark_fetch` accepts `symbol`, `start`, and `end`, fetches the matching FRED CSV series, filters it to the report range, and includes the latest close before the report start when available. This keeps weekend and holiday alignment consistent with the Worker behavior.
-
-Supported direct FRED series:
-
-| Symbol | FRED Series |
-| --- | --- |
-| `sp500` | `SP500` |
-| `nasdaq` | `NASDAQCOM` |
 
 ## Normalization
 
@@ -59,7 +40,6 @@ Public request:
 
 ```txt
 GET /?symbol=sp500&start=YYYY-MM-DD&end=YYYY-MM-DD
-GET /?symbol=nasdaq&start=YYYY-MM-DD&end=YYYY-MM-DD
 ```
 
 For backward compatibility, omitting `symbol` defaults to `sp500`.
@@ -74,26 +54,13 @@ Response:
 }
 ```
 
-Supported series:
-
-| Symbol | FRED Series | KV Key | UI Label |
-| --- | --- | --- | --- |
-| `sp500` | `SP500` | `benchmark:sp500` | S&P 500 |
-| `nasdaq` | `NASDAQCOM` | `benchmark:nasdaq` | NASDAQ |
-
-The old S&P 500 KV key `sp500` is still read as a fallback, so existing deployments can continue working while the new key is populated.
-
 ## Sync
 
 Manual sync:
 
 ```txt
-GET /admin/sync?key=<SYNC_SECRET>&symbol=all
 GET /admin/sync?key=<SYNC_SECRET>&symbol=sp500
-GET /admin/sync?key=<SYNC_SECRET>&symbol=nasdaq
 ```
-
-Cron sync runs `symbol=all`. A failure in one benchmark does not stop the other benchmark from syncing.
 
 Required Cloudflare bindings:
 
@@ -103,9 +70,9 @@ Required Cloudflare bindings:
 
 ## Validation Checklist
 
-- S&P 500 and NASDAQ both return `{ symbol, dates, closes }`.
-- Return Curve selector switches immediately between No Benchmark, S&P 500, and NASDAQ.
-- Purple benchmark line starts from the same normalized 0% range as the portfolio curve.
-- Hover tooltip shows the same date for Portfolio and Benchmark.
+- S&P 500 returns `{ symbol, dates, closes }`.
+- Return Curve selector switches between No Benchmark and S&P 500.
+- The purple benchmark line starts from the same normalized 0% range as the portfolio curve.
+- Hover tooltip shows the same date for Portfolio and S&P 500.
 - No Benchmark hides the benchmark legend and marker.
 - Worker/network failure does not block the report.

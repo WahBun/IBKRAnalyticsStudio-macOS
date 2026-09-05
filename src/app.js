@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.2.0";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.0";
-import { parseIbkrReport } from "./parser.js?v=2.2.0";
+import { decodeReportFile } from "./encoding.js?v=2.2.2";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.2";
+import { parseIbkrReport } from "./parser.js?v=2.2.2";
 
 const app = document.querySelector("#app");
 
@@ -351,7 +351,7 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.0";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.2";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9", "#67e8f9", "#5eead4"];
@@ -362,13 +362,13 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
+const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.2";
 const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark";
 const BENCHMARK_OPTIONS = {
   none: { id: "none", label: "No Benchmark", shortLabel: "None" },
-  sp500: { id: "sp500", label: "S&P 500", shortLabel: "S&P 500" },
-  nasdaq: { id: "nasdaq", label: "NASDAQ", shortLabel: "NASDAQ" }
+  sp500: { id: "sp500", label: "S&P 500", shortLabel: "S&P 500" }
 };
-const APP_VERSION = "2.2.0";
+const APP_VERSION = "2.2.2";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -393,7 +393,6 @@ function normalizeFlexQueryId(value) {
 function normalizeBenchmarkKey(value) {
   const key = String(value || "").toLowerCase();
   if (key === "spx" || key === "sp500" || key === "s&p500" || key === "s&p 500") return "sp500";
-  if (key === "nasdaq" || key === "nasdaqcom" || key === "ixic") return "nasdaq";
   return BENCHMARK_OPTIONS[key] ? key : "";
 }
 
@@ -934,7 +933,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.2.0" alt="" />
+        <img src="./assets/app-logo.png?v=2.2.2" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1592,7 +1591,7 @@ function buildBenchmarkRows(benchmark, portfolioRows) {
     const close = findClosestClose(benchmark, row.date);
     if (close === null) return null;
     const returnRate = ((close / baseClose) - 1) * 100;
-    return { date: row.date, index, returnRate, close };
+    return { date: row.date, portfolioIndex: index, returnRate, close };
   }).filter(Boolean);
 
   return alignedRows.length >= 2 ? alignedRows : null;
@@ -1616,13 +1615,25 @@ function findClosestClose(benchmark, targetDate) {
   return best;
 }
 
-function buildBenchmarkPath(points) {
-  if (!points || points.length < 2) return "";
-  const path = points.map((point, index) => {
-    const command = index === 0 ? "M" : "L";
-    return `${command}${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
-  }).join(" ");
-  return `<path class="return-benchmark" d="${escapeAttribute(path)}"></path>`;
+function buildBenchmarkPath(benchmarkRows, width, paddingLeft, paddingRight, paddingTop, paddingBottom, minValue, maxValue, zeroY) {
+  if (!benchmarkRows || benchmarkRows.length < 2) return "";
+
+  const height = 250;
+  const chartRight = width - paddingRight;
+  const chartHeight = height - paddingTop - paddingBottom;
+  const xFor = (index) => paddingLeft + (index / Math.max(1, benchmarkRows.length - 1)) * (chartRight - paddingLeft);
+  const yFor = (value) => paddingTop + ((maxValue - value) / (maxValue - minValue)) * chartHeight;
+  const points = benchmarkRows.map((row, index) => ({
+    ...row,
+    x: xFor(index),
+    y: yFor(row.returnRate)
+  }));
+  const signedPaths = buildSignedReturnPaths(points, zeroY);
+
+  return [
+    ...signedPaths.positiveLines.map((path) => `<path class="return-benchmark return-benchmark-positive" d="${escapeAttribute(path)}"></path>`),
+    ...signedPaths.negativeLines.map((path) => `<path class="return-benchmark return-benchmark-negative" d="${escapeAttribute(path)}"></path>`)
+  ].join("");
 }
 
 function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(data), benchmarkSelection = "sp500") {
@@ -1672,14 +1683,14 @@ function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(
     const y = yFor(value);
     return Math.abs(y - paddingTop) > 0.5 && Math.abs(y - (height - paddingBottom)) > 0.5;
   });
-  const benchmarkPoints = benchmarkRows
+  const benchmarkHoverPoints = benchmarkRows
     ? benchmarkRows.map((row) => ({
       ...row,
-      x: xFor(row.index, rows.length),
+      x: xFor(row.portfolioIndex, rows.length),
       y: yFor(row.returnRate)
     }))
     : [];
-  const benchmarkByIndex = new Map(benchmarkPoints.map((row) => [row.index, row]));
+  const benchmarkByIndex = new Map(benchmarkHoverPoints.map((row) => [row.portfolioIndex, row]));
   const hoverPoints = points.map((point, index) => {
     const benchmarkPoint = benchmarkByIndex.get(index);
     return {
@@ -1693,8 +1704,8 @@ function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(
     };
   });
 
-  const benchmarkPath = buildBenchmarkPath(benchmarkPoints);
-  const benchmarkLastPoint = benchmarkPoints.at(-1);
+  const benchmarkPath = buildBenchmarkPath(benchmarkRows, width, paddingLeft, paddingRight, paddingTop, paddingBottom, minValue, maxValue, zeroY);
+  const benchmarkLastPoint = benchmarkRows?.at(-1);
 
   return `
     <div class="return-curve">
@@ -2541,21 +2552,38 @@ async function fetchBenchmarkJson(url, selection, startDate, endDate) {
   }
 
   const invoke = getTauriInvoke();
-  if (typeof invoke !== "function") return null;
+  if (typeof invoke !== "function") return fetchLocalSp500Benchmark(selection);
 
-  const raw = await invoke("benchmark_fetch", {
-    symbol: selection,
-    start: startDate,
-    end: endDate
-  });
+  try {
+    const raw = await invoke("benchmark_fetch", {
+      symbol: selection,
+      start: startDate,
+      end: endDate
+    });
 
-  return JSON.parse(raw || "{}");
+    return typeof raw === "string" ? JSON.parse(raw || "{}") : raw;
+  } catch {
+    return fetchLocalSp500Benchmark(selection);
+  }
 }
 
 function isBenchmarkResponseForSelection(json, selection) {
   if (!json || !json.dates || !json.closes || json.dates.length < 2) return false;
   const responseSymbol = normalizeBenchmarkKey(json.symbol);
   return responseSymbol ? responseSymbol === selection : selection === "sp500";
+}
+
+async function fetchLocalSp500Benchmark(selection) {
+  if (selection !== "sp500") return null;
+
+  try {
+    const response = await fetch(LOCAL_SP500_BENCHMARK_URL);
+    if (!response.ok) return null;
+    const json = await response.json();
+    return isBenchmarkResponseForSelection(json, "sp500") ? json : null;
+  } catch {
+    return null;
+  }
 }
 
 function canUseTauriBridge() {
@@ -2996,7 +3024,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.0");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.2");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -3099,9 +3127,7 @@ async function fetchBenchmark(parsed = state.data) {
     const json = await fetchBenchmarkJson(url, selection, startDate, endDate);
     if (!json) return;
     if (requestId !== benchmarkRequestId || state.data !== parsed || state.benchmarkSelection !== selection) return;
-    const responseSymbol = normalizeBenchmarkKey(json.symbol);
-    if (responseSymbol && responseSymbol !== selection) return;
-    if (!responseSymbol && selection !== "sp500") return;
+    if (!isBenchmarkResponseForSelection(json, selection)) return;
     if (json.dates && json.closes && json.dates.length >= 2) {
       if (startDate !== flowRows[0].date || endDate !== flowRows[flowRows.length - 1].date) return;
       state.benchmarkData = {

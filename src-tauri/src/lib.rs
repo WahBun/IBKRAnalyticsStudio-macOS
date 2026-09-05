@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
-const APP_VERSION: &str = "2.2.0";
+const APP_VERSION: &str = "2.2.2";
 const FLEX_BASE_URL: &str = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService";
 const FRED_GRAPH_CSV_URL: &str = "https://fred.stlouisfed.org/graph/fredgraph.csv";
 const RETRY_DELAYS: [u64; 6] = [1, 2, 4, 8, 12, 16];
@@ -30,7 +30,6 @@ struct BenchmarkFetchResponse {
 
 #[derive(Clone, Copy)]
 struct BenchmarkSeries {
-    symbol: &'static str,
     fred_id: &'static str,
 }
 
@@ -105,10 +104,9 @@ async fn benchmark_fetch(symbol: String, start: String, end: String) -> Result<S
                 return serde_json::to_string(&result)
                     .map_err(|error| format!("Could not serialize benchmark data. {error}"));
             }
-            Err(FlexClientError::Transport(message)) => {
+            Err(FlexClientError::Transport(message)) | Err(FlexClientError::Fatal(message)) => {
                 transport_errors.push(format!("{label}: {message}"));
             }
-            Err(FlexClientError::Fatal(message)) => return Err(message),
         }
     }
 
@@ -147,25 +145,19 @@ async fn fetch_fred_benchmark_with_client(
         )));
     }
 
-    parse_fred_benchmark_csv(series, start, end, &body)
+    parse_fred_benchmark_csv(start, end, &body)
 }
 
 fn benchmark_series(symbol: &str) -> Result<BenchmarkSeries, String> {
     match symbol.trim().to_ascii_lowercase().as_str() {
         "sp500" | "spx" | "s&p500" | "s&p 500" => Ok(BenchmarkSeries {
-            symbol: "sp500",
             fred_id: "SP500",
-        }),
-        "nasdaq" | "nasdaqcom" | "ixic" => Ok(BenchmarkSeries {
-            symbol: "nasdaq",
-            fred_id: "NASDAQCOM",
         }),
         _ => Err("Unsupported benchmark symbol.".to_string()),
     }
 }
 
 fn parse_fred_benchmark_csv(
-    series: BenchmarkSeries,
     start: &str,
     end: &str,
     body: &str,
@@ -211,7 +203,7 @@ fn parse_fred_benchmark_csv(
     }
 
     Ok(BenchmarkFetchResponse {
-        symbol: series.symbol,
+        symbol: "sp500",
         dates: rows.iter().map(|(date, _)| date.clone()).collect(),
         closes: rows.iter().map(|(_, close)| *close).collect(),
         source: "fred",
