@@ -18,7 +18,8 @@ IBKR-Analytics-Studio-2.2.4-macos-arm64.dmg
 
 1. 下载并打开 `.dmg`。
 2. 将 `IBKR Analytics Studio.app` 拖到 `Applications`。
-3. 第一次打开若 macOS 提示未验证开发者，可右键 App 后选择 Open。
+3. 第一次打开若 macOS 提示未验证开发者，可右键 App 后选择 **Open**。
+4. 如果仍被拦截，打开 **System Settings -> Privacy & Security**，在安全提示处选择 **Open Anyway**，再回到 App 选择 **Open**。
 
 `v2.1.16` 起，DMG 内的 App 会在打包时重新签名并校验，避免下载到其他 Mac 后因为签名损坏被提示“文件已损坏”。当前包仍未接 Apple Developer ID 公证；若 macOS 继续拦截，这是未公证提示，不是安装包损坏。
 
