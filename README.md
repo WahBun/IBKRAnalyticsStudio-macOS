@@ -1,4 +1,4 @@
-# IBKR Analytics Studio Offline
+# IBKR Analytics Studio for macOS
 
 > macOS/Tauri fork of `G061206/IBKRAnalyticsStudio`, with local IBKR Flex Web Service fetching, Apple Silicon packaging, and a native `.dmg` installer.
 
@@ -8,7 +8,7 @@
 
 ## macOS 下载
 
-Releases 推荐上传这个文件给普通 macOS 用户：
+Releases 页面提供以下 macOS 安装包：
 
 ```text
 IBKR-Analytics-Studio-2.2.4-macos-arm64.dmg
@@ -24,7 +24,7 @@ IBKR-Analytics-Studio-2.2.4-macos-arm64.dmg
 
 当前 macOS 包面向 Apple Silicon/arm64。Intel Mac 需要后续单独构建 `x86_64` 或 universal 包。
 
-## Fork 说明
+## 项目说明
 
 本仓库基于 MIT License 的 [G061206/IBKRAnalyticsStudio](https://github.com/G061206/IBKRAnalyticsStudio) 改造。macOS 版本新增：
 
@@ -34,13 +34,13 @@ IBKR-Analytics-Studio-2.2.4-macos-arm64.dmg
 - 成功拉取 Flex 报表后默认进入 Daily 页面。
 - macOS 圆角 App 图标和 `.dmg` 分发包。
 
-IBKR Analytics Studio Offline 是一个面向 Interactive Brokers 账户报表的本地优先分析应用。Windows 版使用 WebView2 原生壳；macOS 可使用 Tauri 原生壳。当前离线版主推 **IBKR Flex API 自动拉取报表**：应用通过本机桌面壳请求 IBKR Flex Web Service，拿到 CSV 报表后在本机解析和展示。
+IBKR Analytics Studio 是一个面向 Interactive Brokers 账户报表的本地优先 macOS 分析应用。当前版本主推 **IBKR Flex API 自动拉取报表**：应用通过本机 Tauri 桌面壳请求 IBKR Flex Web Service，拿到 CSV 报表后在本机解析和展示。
 
 手动上传 CSV/TXT 仍然保留，主要作为备用导入方式。
 
 ## 核心定位
 
-- Windows 本地应用基于 Microsoft Edge WebView2，macOS 本地应用基于 Tauri/WebKit。
+- macOS 本地应用基于 Tauri/WebKit。
 - 主推 Flex API 自动拉取 Activity Flex Query。
 - 数据解析、图表渲染、JSON/PNG 导出均在本机完成。
 - Token 和 Query ID 可记住在本机桌面 App 的 localStorage 中。
@@ -48,15 +48,13 @@ IBKR Analytics Studio Offline 是一个面向 Interactive Brokers 账户报表�
 
 ## 快速开始
 
-推荐直接运行已发布的 WebView2 版本：
-https://github.com/G061206/IBKRAnalyticsStudio/releases
-下载压缩包解压后运行exe
+推荐直接下载本仓库 Releases 中的 macOS DMG：
 
 ```text
-IBKRAnalyticsStudio.exe
+IBKR-Analytics-Studio-2.2.4-macos-arm64.dmg
 ```
 
-打开后，参考首页教程获取 **IBKR Flex API** ：
+安装后打开 `IBKR Analytics Studio.app`，参考首页教程获取 **IBKR Flex API**：
 
 - Flex Web Service Token
 - Activity Flex Query ID
@@ -65,17 +63,18 @@ IBKRAnalyticsStudio.exe
 
 ### Token 保存
 
-应用会记住上次输入的 Token 和 Query ID，保存位置是当前机器的 WebView2 本地存储，可点击 **Forget saved** 清除。
+应用会记住上次输入的 Token 和 Query ID，保存位置是当前 Mac 的 App/WebView 本地存储，可点击 **Forget saved** 清除。
 
 Token 是敏感信息。若曾经发给他人或暴露在聊天记录中，建议在 IBKR Client Portal 重新生成。
 
 ### 报表暂存与刷新
 
-通过 Flex API 拉取成功后，应用会把最近一次报表暂存在本机 WebView2 IndexedDB。下次打开软件时会先展示暂存报表，避免每次启动都等待 IBKR 重新生成报表。
+通过 Flex API 拉取成功后，应用会把最近一次报表暂存在本机 Tauri/WebKit IndexedDB。下次打开软件时会先展示暂存报表，避免每次启动都等待 IBKR 重新生成报表。
 
 - 暂存内容只保存在当前电脑。
 - 页面顶部会显示报表更新时间。
-- 打开暂存报表后，应用会继续尝试刷新报表。
+- 打开暂存报表后，应用不会自动刷新覆盖缓存。
+- 需要更新数据时，手动点击顶部 **Refresh**。
 - 刷新状态使用“报表刷新中”“报表已更新”等提示。
 - 手动选择本地 CSV/TXT 时，不会覆盖 Flex API 的暂存报表。
 
@@ -243,7 +242,7 @@ Breakout by Day? -> Yes
 
 静态前端可通过本地服务预览：
 
-```powershell
+```bash
 npm run serve
 ```
 
@@ -268,7 +267,7 @@ npm run tauri:build
 src-tauri/target/release/bundle/macos/IBKR Analytics Studio.app
 ```
 
-Mac 版会使用 Tauri/Rust 桥接请求 IBKR Flex Web Service。前端仍使用 localStorage 保存 Token / Query ID，并使用 IndexedDB 暂存最近一次 Flex 报表；这些数据保存在当前 Mac 的 App/WebView 本地数据里。
+macOS 版会使用 Tauri/Rust 桥接请求 IBKR Flex Web Service。前端仍使用 localStorage 保存 Token / Query ID，并使用 IndexedDB 暂存最近一次 Flex 报表；这些数据保存在当前 Mac 的 App/WebView 本地数据里。
 
 生成 macOS DMG：
 
@@ -290,7 +289,7 @@ IB Gateway 属于 TWS API/交易网关，通常用于行情、下单、账户实
 
 语法检查：
 
-```powershell
+```bash
 npm run check
 ```
 
@@ -299,7 +298,7 @@ npm run check
 Return Curve 使用的 S&P 500 基准数据代理位于：
 
 ```text
-cloudflare\sp500-proxy
+cloudflare/sp500-proxy
 ```
 
 Worker 会把 FRED `SP500` 收盘价缓存到 Cloudflare KV，普通查询只读取 KV：
@@ -325,42 +324,14 @@ GET /admin/sync?key=<SYNC_SECRET>&symbol=sp500
 
 桌面端和本地预览的来源需要在 Worker 的 CORS 白名单中，例如 `https://ibkr-analytics.local`、`http://tauri.localhost`、`tauri://localhost`、`http://127.0.0.1:4187`，否则前端会拿不到 Benchmark 叠加线。
 
-## 构建 Windows 应用
-
-WebView2 壳位于：
-
-```text
-windows\IBKRAnalyticsStudio.WebView2
-```
-
-发布框架依赖版本：
-
-```powershell
-cd windows\IBKRAnalyticsStudio.WebView2
-.\build.ps1
-```
-
-发布自包含版本：
-
-```powershell
-.\build.ps1 -SelfContained
-```
-
-发布干净便携版本：
-
-```powershell
-.\build.ps1 -SingleFile
-```
-
-框架依赖版本体积更小，但目标机器需要 .NET Desktop Runtime。自包含版本更大，但更适合分发给没有 .NET 环境的机器。干净便携版本会把 .NET/WebView2 依赖收进单个 exe，解压后根目录只包含 `IBKRAnalyticsStudio.exe` 和 `wwwroot` 文件夹。
-
 ## 目录结构
 
 ```text
-ibkr-analytics-studio-offline/
+IBKRAnalyticsStudio/
 ├─ assets/
 │  ├─ app-logo.png
 │  ├─ app-logo-256.png
+│  ├─ benchmarks/
 │  ├─ ibkr-logo.svg
 │  ├─ icon.svg
 │  └─ styles.css
@@ -375,8 +346,6 @@ ibkr-analytics-studio-offline/
 │  ├─ parser.js
 │  └─ reportLanguage.js
 ├─ src-tauri/
-├─ windows/
-│  └─ IBKRAnalyticsStudio.WebView2/
 ├─ index.html
 ├─ package.json
 ├─ serve.mjs
@@ -389,10 +358,10 @@ ibkr-analytics-studio-offline/
 - `src/app.js`: 页面渲染、交互、Flex API 面板、报表暂存、Benchmark 基准叠加、JSON/PNG 导出。
 - `assets/styles.css`: 页面样式、深色主题、响应式布局。
 - `src-tauri/src/lib.rs`: macOS/Tauri Flex API 原生桥接、代理路由和报表拉取。
+- `src-tauri/capabilities/default.json`: Tauri 命令权限配置。
+- `src-tauri/permissions/app-commands.toml`: 允许前端调用本项目自有命令。
 - `scripts/build-macos-dmg.sh`: macOS `.dmg` 分发包构建脚本。
 - `cloudflare/sp500-proxy/index.js`: S&P 500 的 FRED 数据代理、KV 缓存、定时同步和手动同步接口。
-- `windows/IBKRAnalyticsStudio.WebView2/MainForm.cs`: Windows WebView2 壳、Flex API 原生桥接、窗口主题。
-- `windows/IBKRAnalyticsStudio.WebView2/FlexApiClient.cs`: IBKR Flex Web Service 请求逻辑。
 - `docs/sp500-benchmark-implementation.md`: Return Curve Benchmark 叠加实现记录。
 
 ## 隐私与安全
