@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.2.2";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.2";
-import { parseIbkrReport } from "./parser.js?v=2.2.2";
+import { decodeReportFile } from "./encoding.js?v=2.2.3";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.3";
+import { parseIbkrReport } from "./parser.js?v=2.2.3";
 
 const app = document.querySelector("#app");
 
@@ -351,7 +351,7 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.2";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.3";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9", "#67e8f9", "#5eead4"];
@@ -362,13 +362,14 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
-const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.2";
+const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.3";
+const BENCHMARK_FETCH_TIMEOUT_MS = 5500;
 const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark";
 const BENCHMARK_OPTIONS = {
   none: { id: "none", label: "No Benchmark", shortLabel: "None" },
   sp500: { id: "sp500", label: "S&P 500", shortLabel: "S&P 500" }
 };
-const APP_VERSION = "2.2.2";
+const APP_VERSION = "2.2.3";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -933,7 +934,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.2.2" alt="" />
+        <img src="./assets/app-logo.png?v=2.2.3" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -2382,7 +2383,7 @@ function bindReturnCurveHover() {
 
   const renderTooltip = (point) => {
     const benchmarkValue = Number(point.benchmarkReturn);
-    const hasBenchmark = Number.isFinite(benchmarkValue) && point.benchmarkLabel;
+    const hasBenchmark = point.benchmarkReturn !== null && Number.isFinite(benchmarkValue) && point.benchmarkLabel;
     tooltip.innerHTML = `
       <strong>${escapeHtml(formatDate(point.date))}</strong>
       <span><b>Portfolio TWR</b><em class="${valueClass(point.portfolioReturn)}">${escapeHtml(formatSignedPercent(point.portfolioReturn))}</em></span>
@@ -2417,7 +2418,7 @@ function bindReturnCurveHover() {
     crosshair.setAttribute("y2", String(chartBottom));
     setMarker(portfolioMarker, point.portfolioX, point.portfolioY);
     const benchmarkY = Number(point.benchmarkY);
-    setMarker(benchmarkMarker, point.portfolioX, benchmarkY, Number.isFinite(benchmarkY));
+    setMarker(benchmarkMarker, point.portfolioX, benchmarkY, point.benchmarkY !== null && Number.isFinite(benchmarkY));
     renderTooltip(point);
     positionTooltip(point);
     tooltip.classList.add("is-visible");
@@ -2542,7 +2543,7 @@ function getTauriInvoke() {
 
 async function fetchBenchmarkJson(url, selection, startDate, endDate) {
   try {
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url, BENCHMARK_FETCH_TIMEOUT_MS);
     if (response.ok) {
       const json = await response.json();
       if (isBenchmarkResponseForSelection(json, selection)) return json;
@@ -2555,16 +2556,33 @@ async function fetchBenchmarkJson(url, selection, startDate, endDate) {
   if (typeof invoke !== "function") return fetchLocalSp500Benchmark(selection);
 
   try {
-    const raw = await invoke("benchmark_fetch", {
+    const raw = await withTimeout(invoke("benchmark_fetch", {
       symbol: selection,
       start: startDate,
       end: endDate
-    });
+    }), BENCHMARK_FETCH_TIMEOUT_MS);
 
-    return typeof raw === "string" ? JSON.parse(raw || "{}") : raw;
+    const json = typeof raw === "string" ? JSON.parse(raw || "{}") : raw;
+    if (isBenchmarkResponseForSelection(json, selection)) return json;
+    return fetchLocalSp500Benchmark(selection);
   } catch {
     return fetchLocalSp500Benchmark(selection);
   }
+}
+
+function fetchWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { signal: controller.signal }).finally(() => window.clearTimeout(timer));
+}
+
+function withTimeout(promise, timeoutMs) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      window.setTimeout(() => reject(new Error("Benchmark request timed out.")), timeoutMs);
+    })
+  ]);
 }
 
 function isBenchmarkResponseForSelection(json, selection) {
@@ -3024,7 +3042,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.2");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.3");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -3123,23 +3141,34 @@ async function fetchBenchmark(parsed = state.data) {
   const endDate = flowRows[flowRows.length - 1].date;
 
   try {
+    const localJson = await fetchLocalSp500Benchmark(selection);
+    const hasLocalBenchmark = applyBenchmarkData(localJson, selection, parsed, requestId, startDate, endDate);
+
     const url = `${BENCHMARK_PROXY_URL}?symbol=${encodeURIComponent(selection)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
     const json = await fetchBenchmarkJson(url, selection, startDate, endDate);
-    if (!json) return;
-    if (requestId !== benchmarkRequestId || state.data !== parsed || state.benchmarkSelection !== selection) return;
-    if (!isBenchmarkResponseForSelection(json, selection)) return;
-    if (json.dates && json.closes && json.dates.length >= 2) {
-      if (startDate !== flowRows[0].date || endDate !== flowRows[flowRows.length - 1].date) return;
-      state.benchmarkData = {
-        symbol: selection,
-        dates: json.dates,
-        closes: json.closes
-      };
-      renderDashboard();
-    }
+    if (!json && hasLocalBenchmark) return;
+    applyBenchmarkData(json, selection, parsed, requestId, startDate, endDate);
   } catch {
     // benchmark fetch is optional; silently skip on failure
   }
+}
+
+function applyBenchmarkData(json, selection, parsed, requestId, startDate, endDate) {
+  if (!json) return false;
+  if (requestId !== benchmarkRequestId || state.data !== parsed || state.benchmarkSelection !== selection) return false;
+  if (!isBenchmarkResponseForSelection(json, selection)) return false;
+
+  const navHistory = parsed.navHistory || [];
+  const flowRows = navHistory.filter((row) => row.flowAdjusted && row.date);
+  if (startDate !== flowRows[0]?.date || endDate !== flowRows.at(-1)?.date) return false;
+
+  state.benchmarkData = {
+    symbol: selection,
+    dates: json.dates,
+    closes: json.closes
+  };
+  renderDashboard();
+  return true;
 }
 
 function downloadJson(data) {

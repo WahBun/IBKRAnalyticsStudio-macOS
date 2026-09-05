@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
-const APP_VERSION: &str = "2.2.2";
+const APP_VERSION: &str = "2.2.3";
 const FLEX_BASE_URL: &str = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService";
 const FRED_GRAPH_CSV_URL: &str = "https://fred.stlouisfed.org/graph/fredgraph.csv";
 const RETRY_DELAYS: [u64; 6] = [1, 2, 4, 8, 12, 16];
