@@ -228,6 +228,19 @@ svg {
   background: var(--surface-low);
 }
 
+.privacy-toggle-button {
+  width: 32px;
+  height: 32px;
+  border-color: var(--line);
+  background: var(--surface-low);
+}
+
+.privacy-toggle-button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-low));
+}
+
 .language-toggle {
   display: inline-flex;
   align-items: center;
@@ -2453,6 +2466,10 @@ tbody tr:hover {
   line-height: 15px;
 }
 
+.pie-value.is-amount-hidden {
+  min-height: 16px;
+}
+
 .pie-total {
   margin-top: 6px;
   color: var(--muted);
@@ -2468,6 +2485,11 @@ tbody tr:hover {
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   text-align: center;
+}
+
+.pie-total.is-amount-hidden {
+  color: var(--muted);
+  letter-spacing: 1px;
 }
 
 .position-chart-card {

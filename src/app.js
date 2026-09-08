@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.2.7";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.7";
-import { parseIbkrReport } from "./parser.js?v=2.2.7";
+import { decodeReportFile } from "./encoding.js?v=2.2.8";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.8";
+import { parseIbkrReport } from "./parser.js?v=2.2.8";
 
 const app = document.querySelector("#app");
 
@@ -81,6 +81,8 @@ const copy = {
     shareNamePlaceholder: "自定义用户名",
     hideShareName: "隐藏用户名",
     hideEndingNav: "隐藏期末净值",
+    hidePositionAmounts: "隐藏持仓金额",
+    showPositionAmounts: "显示持仓金额",
     landscape: "横版",
     portrait: "竖版",
     downloadPng: "下载 PNG",
@@ -163,6 +165,8 @@ const copy = {
     shareNamePlaceholder: "Custom username",
     hideShareName: "Hide username",
     hideEndingNav: "Hide ending NAV",
+    hidePositionAmounts: "Hide position amounts",
+    showPositionAmounts: "Show position amounts",
     landscape: "Landscape",
     portrait: "Portrait",
     downloadPng: "Download PNG",
@@ -342,6 +346,8 @@ const icons = {
   download: '<path d="M12 4v10" /><path d="m7 9 5 5 5-5" /><path d="M5 20h14" />',
   share: '<circle cx="7" cy="8" r="3" /><circle cx="17" cy="12" r="3" /><circle cx="7" cy="18" r="3" /><path d="m9.7 9.2 4.6 1.8" /><path d="m14.3 13.2-4.6 2.7" />',
   close: '<path d="M18 6 6 18" /><path d="m6 6 12 12" />',
+  eye: '<path d="M2.1 12s3.7-6 9.9-6 9.9 6 9.9 6-3.7 6-9.9 6-9.9-6-9.9-6Z" /><circle cx="12" cy="12" r="3" />',
+  eyeOff: '<path d="M3 3l18 18" /><path d="M10.6 10.6A3 3 0 0 0 12 15a3 3 0 0 0 2.1-.9" /><path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c6.2 0 9.9 7 9.9 7a17.6 17.6 0 0 1-2.1 2.8" /><path d="M6.6 6.7C3.7 8.6 2.1 12 2.1 12s3.7 7 9.9 7a9.7 9.7 0 0 0 4.2-.9" />',
   arrowUp: '<path d="M12 19V5" /><path d="m6 11 6-6 6 6" />',
   arrowDown: '<path d="M12 5v14" /><path d="m6 13 6 6 6-6" />'
 };
@@ -351,7 +357,7 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.7";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.8";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9", "#67e8f9", "#5eead4"];
@@ -362,14 +368,15 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
-const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.7";
+const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.8";
 const BENCHMARK_FETCH_TIMEOUT_MS = 5500;
 const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark";
+const POSITION_AMOUNTS_HIDDEN_STORAGE_KEY = "ibkr-position-amounts-hidden";
 const BENCHMARK_OPTIONS = {
   none: { id: "none", label: "No Benchmark", shortLabel: "None" },
   sp500: { id: "sp500", label: "S&P 500", shortLabel: "S&P 500" }
 };
-const APP_VERSION = "2.2.7";
+const APP_VERSION = "2.2.8";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -429,6 +436,7 @@ const state = {
   shareName: localStorage.getItem("ibkr-share-name") || "",
   shareHideName: localStorage.getItem("ibkr-share-hide-name") === "1",
   shareHideNav: localStorage.getItem("ibkr-share-hide-nav") === "1",
+  positionAmountsHidden: localStorage.getItem(POSITION_AMOUNTS_HIDDEN_STORAGE_KEY) === "1",
   language: localStorage.getItem("ibkr-analytics-language") === "en" ? "en" : "zh",
   theme: localStorage.getItem("ibkr-analytics-theme") === "dark" ? "dark" : "light",
   benchmarkSelection: normalizeBenchmarkSelection(localStorage.getItem(BENCHMARK_STORAGE_KEY) || "sp500"),
@@ -936,7 +944,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.2.7" alt="" />
+        <img src="./assets/app-logo.png?v=2.2.8" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1217,8 +1225,17 @@ function renderPositions(data) {
               <h2>持仓资产分布</h2>
               <p class="card-kicker">按标的市值与现金统计</p>
             </div>
+            <button
+              class="icon-button privacy-toggle-button"
+              id="positionAmountPrivacyButton"
+              type="button"
+              title="${escapeAttribute(state.positionAmountsHidden ? t("showPositionAmounts") : t("hidePositionAmounts"))}"
+              aria-label="${escapeAttribute(state.positionAmountsHidden ? t("showPositionAmounts") : t("hidePositionAmounts"))}"
+              aria-pressed="${state.positionAmountsHidden ? "true" : "false"}">
+              ${icon(state.positionAmountsHidden ? "eyeOff" : "eye")}
+            </button>
           </div>
-          ${renderPositionAssetPie(rows, currency, data.nav.cash)}
+          ${renderPositionAssetPie(rows, currency, data.nav.cash, { hideAmounts: state.positionAmountsHidden })}
         </section>
       </div>
     </div>
@@ -1447,7 +1464,7 @@ function buildPositionAssetAllocation(positions, cash = 0, currency = "USD") {
     .sort((a, b) => b.value - a.value);
 }
 
-function renderPositionAssetPie(positions, currency, cash = 0) {
+function renderPositionAssetPie(positions, currency, cash = 0, options = {}) {
   const rows = buildPositionAssetAllocation(positions, cash, currency);
   if (!rows.length) return renderEmpty("暂无持仓市值数据。");
 
@@ -1456,7 +1473,8 @@ function renderPositionAssetPie(positions, currency, cash = 0) {
     layoutClass: "position-pie-layout",
     chartClass: "asset-pie",
     legendClass: "position-pie-legend",
-    ariaLabel: "持仓资产分布"
+    ariaLabel: "持仓资产分布",
+    hideAmounts: options.hideAmounts
   });
 }
 
@@ -2032,6 +2050,8 @@ function renderInteractivePie(rows, currency, options = {}) {
   const legendClass = options.legendClass || "pie-legend";
   const ariaLabel = options.ariaLabel || "资产配置";
   const centerLabel = options.centerLabel || "";
+  const hideAmounts = Boolean(options.hideAmounts);
+  const hiddenAmount = "••••";
   const total = sourceRows.reduce((sum, row) => sum + Math.abs(row.value), 0) || 1;
   let cursor = 0;
 
@@ -2043,7 +2063,7 @@ function renderInteractivePie(rows, currency, options = {}) {
     const label = displayGroup(row.name);
     const amount = formatMoney(value, currency);
     const percentLabel = formatPercent(percent * 100);
-    const tooltip = `${label}: ${amount} · ${percentLabel}`;
+    const tooltip = hideAmounts ? `${label}: ${percentLabel}` : `${label}: ${amount} · ${percentLabel}`;
     const start = cursor;
     const end = cursor + percentValue;
     const dashOffset = -cursor;
@@ -2083,21 +2103,21 @@ function renderInteractivePie(rows, currency, options = {}) {
           const label = displayGroup(row.name);
           const amount = formatMoney(value, currency);
           const percentLabel = formatPercent(percent);
-          const tooltip = `${label}: ${amount} · ${percentLabel}`;
+          const tooltip = hideAmounts ? `${label}: ${percentLabel}` : `${label}: ${amount} · ${percentLabel}`;
           return `
             <div class="pie-legend-row" data-pie-tooltip="${escapeAttribute(tooltip)}">
               <span class="pie-label">
                 <i style="background:${colors[index % colors.length]}"></i>
                 ${escapeHtml(label)}
               </span>
-              <span class="pie-value">
+              <span class="pie-value${hideAmounts ? " is-amount-hidden" : ""}">
                 <strong>${escapeHtml(percentLabel)}</strong>
-                <span>${escapeHtml(amount)}</span>
+                ${hideAmounts ? "" : `<span>${escapeHtml(amount)}</span>`}
               </span>
             </div>
           `;
         }).join("")}
-        <div class="pie-total">${formatMoney(total, currency)}</div>
+        <div class="pie-total${hideAmounts ? " is-amount-hidden" : ""}">${hideAmounts ? hiddenAmount : formatMoney(total, currency)}</div>
       </div>
     </div>
   `;
@@ -2272,6 +2292,11 @@ function bindDashboardEvents() {
   document.querySelector("#mobileFlexRefreshButton")?.addEventListener("click", refreshFlexReportFromDashboard);
   document.querySelector("#dailyTradeSortButton")?.addEventListener("click", () => {
     state.dailyTradeSort = state.dailyTradeSort === "asc" ? "desc" : "asc";
+    renderDashboard();
+  });
+  document.querySelector("#positionAmountPrivacyButton")?.addEventListener("click", () => {
+    state.positionAmountsHidden = !state.positionAmountsHidden;
+    localStorage.setItem(POSITION_AMOUNTS_HIDDEN_STORAGE_KEY, state.positionAmountsHidden ? "1" : "0");
     renderDashboard();
   });
   bindPieTooltips();
@@ -3135,7 +3160,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.7");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.8");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {

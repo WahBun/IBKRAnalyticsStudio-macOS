@@ -1495,7 +1495,6 @@ function analyzeMonthlySummary(sections, exchangeRates) {
         row.forexPL +
         row.syepIncome +
         row.interest -
-        row.commissions -
         row.fees
     }))
     .sort((a, b) => a.month.localeCompare(b.month));
