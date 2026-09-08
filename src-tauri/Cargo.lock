@@ -1373,7 +1373,7 @@ dependencies = [
 
 [[package]]
 name = "ibkr-analytics-studio"
-version = "2.2.5"
+version = "2.2.6"
 dependencies = [
  "reqwest 0.12.28",
  "roxmltree",
