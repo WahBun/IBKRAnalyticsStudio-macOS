@@ -1624,6 +1624,43 @@ html[data-theme="dark"] .refresh-action-button:hover {
   text-transform: uppercase;
 }
 
+.table-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pill-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface-low);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pill-button:hover {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.pill-button svg {
+  width: 13px;
+  height: 13px;
+}
+
 .table-scroll {
   overflow-x: auto;
 }

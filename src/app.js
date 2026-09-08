@@ -408,6 +408,7 @@ const state = {
   search: "",
   sourceName: "",
   dailyMonth: "",
+  dailyTradeSort: "desc",
   flexToken: normalizeFlexToken(localStorage.getItem(FLEX_TOKEN_STORAGE_KEY)),
   flexQueryId: normalizeFlexQueryId(localStorage.getItem(FLEX_QUERY_ID_STORAGE_KEY)),
   flexStatus: "",
@@ -1129,6 +1130,7 @@ function renderDailyStats(data) {
   const selectedMonth = months.includes(state.dailyMonth) ? state.dailyMonth : months.at(-1) || "";
   const monthRows = selectedMonth ? visibleRows.filter((row) => row.month === selectedMonth) : [];
   const tradeRows = selectedMonth ? visibleTradeRows.filter((row) => row.month === selectedMonth) : [];
+  const sortedTradeRows = sortDailyTradeRows(tradeRows);
   const unfilteredTradeRows = selectedMonth ? allTradeRows.filter((row) => row.month === selectedMonth) : [];
   const rowCountLabel = isFiltered
     ? `${formatNumber(tradeRows.length)} / ${formatNumber(unfilteredTradeRows.length)} rows`
@@ -1167,8 +1169,17 @@ function renderDailyStats(data) {
           </div>
         </section>
         <section class="table-card span-12">
-          <div class="table-header"><h2>交易流水</h2><span class="pill">${rowCountLabel}</span></div>
-          ${renderDailyTradeTable(tradeRows, currency, emptyTradeMessage)}
+          <div class="table-header">
+            <h2>交易流水</h2>
+            <span class="table-actions">
+              <button class="pill-button" id="dailyTradeSortButton" type="button" title="${escapeAttribute(dailyTradeSortTitle())}">
+                ${icon(state.dailyTradeSort === "desc" ? "arrowDown" : "arrowUp")}
+                ${escapeHtml(dailyTradeSortLabel())}
+              </button>
+              <span class="pill">${rowCountLabel}</span>
+            </span>
+          </div>
+          ${renderDailyTradeTable(sortedTradeRows, currency, emptyTradeMessage)}
         </section>
       </div>
     </div>
@@ -1519,6 +1530,35 @@ function renderDailyStat(label, value, tone = null) {
       <strong class="${className}">${escapeHtml(value)}</strong>
     </div>
   `;
+}
+
+function sortDailyTradeRows(rows) {
+  const direction = state.dailyTradeSort === "asc" ? 1 : -1;
+  return rows.slice().sort((a, b) => {
+    const diff = tradeRowTime(a) - tradeRowTime(b);
+    if (diff !== 0) return diff * direction;
+    return String(a.symbol || "").localeCompare(String(b.symbol || "")) * direction;
+  });
+}
+
+function tradeRowTime(row) {
+  const value = row?.dateTime || row?.date || "";
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function dailyTradeSortLabel() {
+  if (state.language === "en") {
+    return state.dailyTradeSort === "asc" ? "Oldest first" : "Newest first";
+  }
+  return state.dailyTradeSort === "asc" ? "最旧在上" : "最新在上";
+}
+
+function dailyTradeSortTitle() {
+  if (state.language === "en") {
+    return state.dailyTradeSort === "asc" ? "Currently sorted oldest to newest" : "Currently sorted newest to oldest";
+  }
+  return state.dailyTradeSort === "asc" ? "当前按成交时间从旧到新排序" : "当前按成交时间从新到旧排序";
 }
 
 function renderDailyTradeTable(rows, currency, emptyMessage = "当前月份没有交易记录。") {
@@ -2230,6 +2270,10 @@ function bindDashboardEvents() {
   document.querySelector("#dashboardUpdateCheckButton")?.addEventListener("click", () => checkForUpdates({ manual: true }));
   document.querySelector("#dashboardFlexRefreshButton")?.addEventListener("click", refreshFlexReportFromDashboard);
   document.querySelector("#mobileFlexRefreshButton")?.addEventListener("click", refreshFlexReportFromDashboard);
+  document.querySelector("#dailyTradeSortButton")?.addEventListener("click", () => {
+    state.dailyTradeSort = state.dailyTradeSort === "asc" ? "desc" : "asc";
+    renderDashboard();
+  });
   bindPieTooltips();
   bindReturnCurveHover();
   document.querySelectorAll("[data-update-download]").forEach((button) => {
