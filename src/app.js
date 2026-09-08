@@ -834,7 +834,8 @@ function renderFlexSyncStatus() {
   const className = [
     "sync-status",
     state.backgroundRefreshBusy ? "is-refreshing" : "",
-    /失败|生成|failed|generating/i.test(state.cacheStatus) ? "is-warning" : ""
+    /生成|generating/i.test(state.cacheStatus) ? "is-generating" : "",
+    /失败|failed/i.test(state.cacheStatus) ? "is-warning" : ""
   ].filter(Boolean).join(" ");
   const detail = refreshStatusHelpText();
   return `

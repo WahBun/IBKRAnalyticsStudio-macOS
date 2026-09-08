@@ -1079,6 +1079,12 @@ html[data-theme="dark"] .refresh-action-button:hover {
   background: var(--positive-soft);
 }
 
+.sync-status.is-generating {
+  border-color: color-mix(in srgb, #facc15 42%, var(--line));
+  color: #fde68a;
+  background: rgba(250, 204, 21, 0.14);
+}
+
 .sync-status.is-warning {
   border-color: color-mix(in srgb, var(--negative) 30%, var(--line));
   color: var(--negative);
