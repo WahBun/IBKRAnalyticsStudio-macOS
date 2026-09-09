@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.2.8";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.8";
-import { parseIbkrReport } from "./parser.js?v=2.2.8";
+import { decodeReportFile } from "./encoding.js?v=2.2.9";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.9";
+import { parseIbkrReport } from "./parser.js?v=2.2.9";
 
 const app = document.querySelector("#app");
 
@@ -357,7 +357,7 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.8";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.9";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9", "#67e8f9", "#5eead4"];
@@ -368,7 +368,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
-const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.8";
+const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.9";
 const BENCHMARK_FETCH_TIMEOUT_MS = 5500;
 const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark";
 const POSITION_AMOUNTS_HIDDEN_STORAGE_KEY = "ibkr-position-amounts-hidden";
@@ -376,7 +376,7 @@ const BENCHMARK_OPTIONS = {
   none: { id: "none", label: "No Benchmark", shortLabel: "None" },
   sp500: { id: "sp500", label: "S&P 500", shortLabel: "S&P 500" }
 };
-const APP_VERSION = "2.2.8";
+const APP_VERSION = "2.2.9";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -944,7 +944,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.2.8" alt="" />
+        <img src="./assets/app-logo.png?v=2.2.9" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1583,7 +1583,7 @@ function renderDailyTradeTable(rows, currency, emptyMessage = "当前月份没�
   if (!rows.length) return renderEmpty(emptyMessage);
   const tableRows = rows.map((row) => [
     formatDateTime(row.dateTime),
-    `<strong>${escapeHtml(row.baseSymbol || row.symbol || "-")}</strong>`,
+    `<strong class="trade-symbol" title="${escapeAttribute(dailyTradeSymbol(row))}">${escapeHtml(dailyTradeSymbol(row))}</strong>`,
     sideBadge(row.side),
     escapeHtml(row.assetCategory || "-"),
     formatNumber(Math.abs(row.quantity), 4),
@@ -1592,7 +1592,12 @@ function renderDailyTradeTable(rows, currency, emptyMessage = "当前月份没�
     formatMoney(row.commission, currency),
     `<span class="${valueClass(row.realizedPL)}">${signedMoney(row.realizedPL, currency)}</span>`
   ]);
-  return renderSimpleTable(["成交时间", "股票代码", "方向", "资产", "数量", "成交价", "成交金额", "佣金", "已实现盈亏"], tableRows, [false, false, false, false, true, true, true, true, true], true);
+  return renderSimpleTable(["成交时间", "股票代码", "方向", "资产", "数量", "成交价", "成交金额", "佣金", "已实现盈亏"], tableRows, [false, false, false, false, true, true, true, true, true], true, "daily-trade-table");
+}
+
+function dailyTradeSymbol(row) {
+  const symbol = String(row?.symbol || "").trim();
+  return symbol || String(row?.baseSymbol || "").trim() || "-";
 }
 
 function renderSimpleTable(headers, rows, numericColumns = [], allowHtml = false, tableClass = "") {
@@ -3160,7 +3165,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.8");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.9");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {

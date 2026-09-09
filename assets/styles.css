@@ -1735,6 +1735,15 @@ tbody tr:hover {
   text-align: center;
 }
 
+.daily-trade-table th:nth-child(2),
+.daily-trade-table td:nth-child(2) {
+  min-width: 180px;
+}
+
+.trade-symbol {
+  white-space: nowrap;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
