@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.13
+
+Status tooltip placement fix.
+
+- Replaced the Cached status badge tooltip with the same instant in-app hover panel used by the warning marker.
+- Repositioned the top status tooltips so they open to the right and no longer clip under the side navigation.
+
 ## v2.2.12
 
 Responsive UI and tooltip polish.

@@ -1069,6 +1069,7 @@ html[data-theme="dark"] .refresh-action-button:hover {
 }
 
 .sync-status {
+  position: relative;
   display: inline-flex;
   align-items: center;
   min-height: 22px;
@@ -1084,6 +1085,39 @@ html[data-theme="dark"] .refresh-action-button:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sync-status::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 60;
+  width: max-content;
+  min-width: min(260px, calc(100vw - 32px));
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 9px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+  font-size: 12px;
+  line-height: 17px;
+  font-weight: 750;
+  text-align: left;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  opacity: 0;
+  transform: translateY(-2px);
+  pointer-events: none;
+  transition: opacity 70ms ease, transform 70ms ease;
+}
+
+.sync-status:hover::after,
+.sync-status:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .sync-status.is-refreshing {
@@ -1130,9 +1164,10 @@ html[data-theme="dark"] .refresh-action-button:hover {
   content: attr(data-tooltip);
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  left: 0;
   z-index: 60;
   width: max-content;
+  min-width: min(300px, calc(100vw - 32px));
   max-width: min(360px, calc(100vw - 32px));
   padding: 9px 10px;
   border: 1px solid var(--line-strong);
@@ -1145,6 +1180,7 @@ html[data-theme="dark"] .refresh-action-button:hover {
   font-weight: 750;
   text-align: left;
   white-space: pre-line;
+  overflow-wrap: anywhere;
   opacity: 0;
   transform: translateY(-2px);
   pointer-events: none;
