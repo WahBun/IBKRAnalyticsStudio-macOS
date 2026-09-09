@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.12
+
+Responsive UI and tooltip polish.
+
+- Replaced the top warning status marker's delayed browser tooltip with an instant in-app hover panel.
+- Improved narrow-window table headers and Daily trade table scrolling so controls and trade timestamps remain easier to scan.
+
 ## v2.2.11
 
 Status indicator cursor polish.

@@ -1105,6 +1105,7 @@ html[data-theme="dark"] .refresh-action-button:hover {
 }
 
 .sync-help {
+  position: relative;
   display: inline-grid;
   place-items: center;
   width: 24px;
@@ -1123,6 +1124,37 @@ html[data-theme="dark"] .refresh-action-button:hover {
 .sync-help:hover {
   color: var(--ink);
   border-color: var(--line-strong);
+}
+
+.sync-help::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 9px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+  font-size: 12px;
+  line-height: 17px;
+  font-weight: 750;
+  text-align: left;
+  white-space: pre-line;
+  opacity: 0;
+  transform: translateY(-2px);
+  pointer-events: none;
+  transition: opacity 70ms ease, transform 70ms ease;
+}
+
+.sync-help:hover::after,
+.sync-help:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .app-bar-actions {
@@ -1351,8 +1383,29 @@ html[data-theme="dark"] .refresh-action-button:hover {
 }
 
 @media (min-width: 981px) and (max-width: 1280px) {
+  .app-bar {
+    padding-inline: 16px;
+  }
+
+  .app-bar-actions {
+    gap: 6px;
+  }
+
+  .search-input {
+    width: clamp(170px, 18vw, 240px);
+  }
+
   .grid-12 > .kpi-card.span-3 {
     grid-column: span 6;
+  }
+
+  .table-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .table-actions {
+    flex-wrap: wrap;
   }
 }
 
@@ -2938,6 +2991,33 @@ tbody tr:hover {
     justify-content: flex-start;
   }
 
+  .table-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .table-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .table-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .daily-trade-table th:first-child,
+  .daily-trade-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--surface);
+    box-shadow: 1px 0 0 var(--line);
+  }
+
+  .daily-trade-table tbody tr:hover td:first-child {
+    background: var(--surface-low);
+  }
+
   .daily-stat-grid {
     grid-template-columns: 1fr;
   }
@@ -3001,6 +3081,43 @@ tbody tr:hover {
 
   .return-card-actions {
     justify-content: space-between;
+  }
+
+  .mobile-bar-main {
+    min-height: 0;
+    flex-wrap: wrap;
+    padding-block: 10px;
+  }
+
+  .mobile-bar-main .brand {
+    flex: 1 1 180px;
+  }
+
+  .mobile-bar-main .top-actions {
+    margin-left: auto;
+  }
+
+  .table-header {
+    padding: 10px 12px;
+  }
+
+  .table-actions {
+    width: 100%;
+    gap: 6px;
+  }
+
+  .pill-button {
+    min-height: 28px;
+    padding-inline: 9px;
+  }
+
+  table {
+    font-size: 12px;
+  }
+
+  th,
+  td {
+    padding: 9px 8px;
   }
 
   .benchmark-select-label {
