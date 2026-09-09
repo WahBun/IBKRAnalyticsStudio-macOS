@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.11
+
+Status indicator cursor polish.
+
+- Removed the help/question-mark cursor from the top warning status indicator.
+
 ## v2.2.10
 
 Daily review and privacy polish.

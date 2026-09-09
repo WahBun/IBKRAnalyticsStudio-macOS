@@ -1117,7 +1117,7 @@ html[data-theme="dark"] .refresh-action-button:hover {
   font-size: 13px;
   line-height: 1;
   font-weight: 900;
-  cursor: help;
+  cursor: default;
 }
 
 .sync-help:hover {
