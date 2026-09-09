@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.2.9";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.9";
-import { parseIbkrReport } from "./parser.js?v=2.2.9";
+import { decodeReportFile } from "./encoding.js?v=2.2.10";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.10";
+import { parseIbkrReport } from "./parser.js?v=2.2.10";
 
 const app = document.querySelector("#app");
 
@@ -357,7 +357,7 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.9";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.10";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9", "#67e8f9", "#5eead4"];
@@ -368,7 +368,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
-const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.9";
+const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.10";
 const BENCHMARK_FETCH_TIMEOUT_MS = 5500;
 const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark";
 const POSITION_AMOUNTS_HIDDEN_STORAGE_KEY = "ibkr-position-amounts-hidden";
@@ -376,7 +376,7 @@ const BENCHMARK_OPTIONS = {
   none: { id: "none", label: "No Benchmark", shortLabel: "None" },
   sp500: { id: "sp500", label: "S&P 500", shortLabel: "S&P 500" }
 };
-const APP_VERSION = "2.2.9";
+const APP_VERSION = "2.2.10";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -415,6 +415,7 @@ const state = {
   search: "",
   sourceName: "",
   dailyMonth: "",
+  dailySelectedDate: "",
   dailyTradeSort: "desc",
   flexToken: normalizeFlexToken(localStorage.getItem(FLEX_TOKEN_STORAGE_KEY)),
   flexQueryId: normalizeFlexQueryId(localStorage.getItem(FLEX_QUERY_ID_STORAGE_KEY)),
@@ -849,7 +850,7 @@ function renderFlexSyncStatus() {
   const detail = refreshStatusHelpText();
   return `
     <span class="${className}" title="${escapeAttribute(statusTitle)}">${escapeHtml(displayStatus)}</span>
-    <span class="sync-help" title="${escapeAttribute(detail)}" aria-label="${escapeAttribute(t("refreshHelp"))}">?</span>
+    <span class="sync-help" title="${escapeAttribute(detail)}" aria-label="${escapeAttribute(t("refreshHelp"))}">⚠️</span>
   `;
 }
 
@@ -944,7 +945,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.2.9" alt="" />
+        <img src="./assets/app-logo.png?v=2.2.10" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1073,8 +1074,20 @@ function renderOverview(data) {
           ${renderReturnCurve(data, currency, state.benchmarkData, returnStatus, state.benchmarkSelection)}
         </section>
         <section class="dashboard-card span-5">
-          <div class="card-header"><h2>资产配置占比</h2></div>
-          ${renderAllocationPie(portfolioAllocation, currency)}
+          <div class="card-header">
+            <h2>资产配置占比</h2>
+            <button
+              class="icon-button privacy-toggle-button"
+              id="overviewAmountPrivacyButton"
+              data-position-amount-privacy
+              type="button"
+              title="${escapeAttribute(state.positionAmountsHidden ? t("showPositionAmounts") : t("hidePositionAmounts"))}"
+              aria-label="${escapeAttribute(state.positionAmountsHidden ? t("showPositionAmounts") : t("hidePositionAmounts"))}"
+              aria-pressed="${state.positionAmountsHidden ? "true" : "false"}">
+              ${icon(state.positionAmountsHidden ? "eyeOff" : "eye")}
+            </button>
+          </div>
+          ${renderAllocationPie(portfolioAllocation, currency, { hideAmounts: state.positionAmountsHidden })}
         </section>
       </div>
     </div>
@@ -1137,13 +1150,18 @@ function renderDailyStats(data) {
   const months = isFiltered && visibleMonths.length ? visibleMonths : allMonths;
   const selectedMonth = months.includes(state.dailyMonth) ? state.dailyMonth : months.at(-1) || "";
   const monthRows = selectedMonth ? visibleRows.filter((row) => row.month === selectedMonth) : [];
-  const tradeRows = selectedMonth ? visibleTradeRows.filter((row) => row.month === selectedMonth) : [];
+  const monthlyTradeRows = selectedMonth ? visibleTradeRows.filter((row) => row.month === selectedMonth) : [];
+  const selectedDate = monthlyTradeRows.some((row) => row.date === state.dailySelectedDate) ? state.dailySelectedDate : "";
+  const tradeRows = selectedDate ? monthlyTradeRows.filter((row) => row.date === selectedDate) : monthlyTradeRows;
   const sortedTradeRows = sortDailyTradeRows(tradeRows);
-  const unfilteredTradeRows = selectedMonth ? allTradeRows.filter((row) => row.month === selectedMonth) : [];
+  const unfilteredMonthlyTradeRows = selectedMonth ? allTradeRows.filter((row) => row.month === selectedMonth) : [];
+  const unfilteredTradeRows = selectedDate ? unfilteredMonthlyTradeRows.filter((row) => row.date === selectedDate) : unfilteredMonthlyTradeRows;
   const rowCountLabel = isFiltered
     ? `${formatNumber(tradeRows.length)} / ${formatNumber(unfilteredTradeRows.length)} rows`
     : `${formatNumber(tradeRows.length)} rows`;
-  const emptyTradeMessage = isFiltered ? "当前搜索没有匹配的交易记录。" : "当前月份没有交易记录。";
+  const emptyTradeMessage = selectedDate
+    ? "当天没有交易记录。"
+    : isFiltered ? "当前搜索没有匹配的交易记录。" : "当前月份没有交易记录。";
   const totalTrades = monthRows.reduce((sum, row) => sum + row.tradeCount, 0);
   const totalGross = monthRows.reduce((sum, row) => sum + row.grossTradeValue, 0);
   const totalRealized = monthRows.reduce((sum, row) => sum + row.realizedPL, 0);
@@ -1164,7 +1182,7 @@ function renderDailyStats(data) {
       <div class="grid-12">
         <section class="dashboard-card span-7 daily-calendar-card">
           <div class="card-header"><h2>盈亏日历</h2><span class="pill">${escapeHtml(selectedMonth || "-")}</span></div>
-          ${renderProfitCalendar(monthRows, selectedMonth, currency)}
+          ${renderProfitCalendar(monthRows, selectedMonth, currency, selectedDate)}
         </section>
         <section class="dashboard-card span-5 daily-trades-card">
           <div class="card-header"><h2>每日交易统计</h2><span class="pill">${formatNumber(totalTrades)} trades</span></div>
@@ -1180,6 +1198,12 @@ function renderDailyStats(data) {
           <div class="table-header">
             <h2>交易流水</h2>
             <span class="table-actions">
+              ${selectedDate ? `
+                <button class="pill-button is-filter-active" id="dailyDateFilterClearButton" type="button" title="${escapeAttribute(dailyDateFilterClearTitle())}">
+                  ${icon("close")}
+                  ${escapeHtml(dailyDateFilterLabel(selectedDate))}
+                </button>
+              ` : ""}
               <button class="pill-button" id="dailyTradeSortButton" type="button" title="${escapeAttribute(dailyTradeSortTitle())}">
                 ${icon(state.dailyTradeSort === "desc" ? "arrowDown" : "arrowUp")}
                 ${escapeHtml(dailyTradeSortLabel())}
@@ -1228,6 +1252,7 @@ function renderPositions(data) {
             <button
               class="icon-button privacy-toggle-button"
               id="positionAmountPrivacyButton"
+              data-position-amount-privacy
               type="button"
               title="${escapeAttribute(state.positionAmountsHidden ? t("showPositionAmounts") : t("hidePositionAmounts"))}"
               aria-label="${escapeAttribute(state.positionAmountsHidden ? t("showPositionAmounts") : t("hidePositionAmounts"))}"
@@ -1478,7 +1503,7 @@ function renderPositionAssetPie(positions, currency, cash = 0, options = {}) {
   });
 }
 
-function renderProfitCalendar(rows, month, currency) {
+function renderProfitCalendar(rows, month, currency, selectedDate = "") {
   if (!month) return renderEmpty("暂无逐日交易数据。");
 
   const [year, monthNumber] = month.split("-").map(Number);
@@ -1494,14 +1519,31 @@ function renderProfitCalendar(rows, month, currency) {
 
   for (let day = 1; day <= daysInMonth; day += 1) {
     const row = byDay.get(day);
+    const date = `${month}-${String(day).padStart(2, "0")}`;
     const value = row?.realizedPL || 0;
     const intensity = row ? Math.min(0.78, 0.16 + Math.abs(value) / maxAbs * 0.52) : 0;
     const tone = value > 0 ? "is-positive" : value < 0 ? "is-negative" : "";
+    const hasTrades = Boolean(row && row.tradeCount > 0);
+    const isSelected = selectedDate === date;
+    const cellClass = ["calendar-cell", tone, hasTrades ? "is-clickable" : "", isSelected ? "is-selected" : ""].filter(Boolean).join(" ");
+    const title = `${date}: ${signedMoney(value, currency)} · ${formatNumber(row?.tradeCount || 0)} trades`;
+    const content = `
+      <span class="calendar-day">${day}</span>
+      ${row ? `<strong class="${valueClass(value)}">${signedCalendarAmount(value)}</strong>` : ""}
+    `;
+    if (!hasTrades) {
+      cells.push(`
+        <div class="${cellClass}" style="--heat-alpha:${intensity.toFixed(2)}" title="${escapeAttribute(title)}">
+          ${content}
+        </div>
+      `);
+      continue;
+    }
+
     cells.push(`
-      <div class="calendar-cell ${tone}" style="--heat-alpha:${intensity.toFixed(2)}" title="${escapeAttribute(`${month}-${String(day).padStart(2, "0")}: ${signedMoney(value, currency)} · ${formatNumber(row?.tradeCount || 0)} trades`)}">
-        <span class="calendar-day">${day}</span>
-        ${row ? `<strong class="${valueClass(value)}">${signedCalendarAmount(value)}</strong>` : ""}
-      </div>
+      <button class="${cellClass}" type="button" data-calendar-date="${escapeAttribute(date)}" style="--heat-alpha:${intensity.toFixed(2)}" title="${escapeAttribute(title)}" aria-pressed="${isSelected ? "true" : "false"}">
+        ${content}
+      </button>
     `);
   }
 
@@ -1577,6 +1619,16 @@ function dailyTradeSortTitle() {
     return state.dailyTradeSort === "asc" ? "Currently sorted oldest to newest" : "Currently sorted newest to oldest";
   }
   return state.dailyTradeSort === "asc" ? "当前按成交时间从旧到新排序" : "当前按成交时间从新到旧排序";
+}
+
+function dailyDateFilterLabel(date) {
+  const formatted = formatDate(date);
+  if (state.language === "en") return formatted;
+  return `${formatted} 当日`;
+}
+
+function dailyDateFilterClearTitle() {
+  return state.language === "en" ? "Show all trades for this month" : "显示本月全部交易记录";
 }
 
 function renderDailyTradeTable(rows, currency, emptyMessage = "当前月份没有交易记录。") {
@@ -2026,7 +2078,7 @@ function buildPortfolioAllocation(data) {
     .sort((a, b) => b.value - a.value);
 }
 
-function renderAllocationPie(rows, currency) {
+function renderAllocationPie(rows, currency, options = {}) {
   if (!rows || !rows.length) return renderEmpty("暂无可展示的数据。");
   const sourceRows = rows.filter((row) => Math.abs(row.value) > 0);
   if (!sourceRows.length) return renderEmpty("暂无可展示的数据。");
@@ -2041,7 +2093,8 @@ function renderAllocationPie(rows, currency) {
     chartClass: "pie-visual",
     legendClass: "pie-legend",
     ariaLabel: "资产配置",
-    centerLabel: formatPercent(100)
+    centerLabel: formatPercent(100),
+    hideAmounts: options.hideAmounts
   });
 }
 
@@ -2299,10 +2352,23 @@ function bindDashboardEvents() {
     state.dailyTradeSort = state.dailyTradeSort === "asc" ? "desc" : "asc";
     renderDashboard();
   });
-  document.querySelector("#positionAmountPrivacyButton")?.addEventListener("click", () => {
-    state.positionAmountsHidden = !state.positionAmountsHidden;
-    localStorage.setItem(POSITION_AMOUNTS_HIDDEN_STORAGE_KEY, state.positionAmountsHidden ? "1" : "0");
+  document.querySelectorAll("[data-calendar-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const date = button.dataset.calendarDate || "";
+      state.dailySelectedDate = state.dailySelectedDate === date ? "" : date;
+      renderDashboard();
+    });
+  });
+  document.querySelector("#dailyDateFilterClearButton")?.addEventListener("click", () => {
+    state.dailySelectedDate = "";
     renderDashboard();
+  });
+  document.querySelectorAll("[data-position-amount-privacy]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.positionAmountsHidden = !state.positionAmountsHidden;
+      localStorage.setItem(POSITION_AMOUNTS_HIDDEN_STORAGE_KEY, state.positionAmountsHidden ? "1" : "0");
+      renderDashboard();
+    });
   });
   bindPieTooltips();
   bindReturnCurveHover();
@@ -2341,6 +2407,7 @@ function bindDashboardEvents() {
 
   document.querySelector("#dailyMonthSelect")?.addEventListener("change", (event) => {
     state.dailyMonth = event.currentTarget.value || "";
+    state.dailySelectedDate = "";
     renderDashboard();
   });
 
@@ -2359,11 +2426,13 @@ function bindDashboardEvents() {
   const searchInput = document.querySelector("#globalSearch");
   searchInput?.addEventListener("input", () => {
     state.search = searchInput.value;
+    state.dailySelectedDate = "";
     scheduleSearchRender();
   });
 
   document.querySelector("#globalSearchClear")?.addEventListener("click", () => {
     state.search = "";
+    state.dailySelectedDate = "";
     render();
     document.querySelector("#globalSearch")?.focus();
   });
@@ -3165,7 +3234,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.9");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.10");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -3218,6 +3287,7 @@ function parseText(text, sourceName, options = {}) {
     state.sourceName = sourceName || "";
     state.reportFingerprint = fingerprintReportText(cleanText);
     state.search = options.preserveView ? previousSearch : "";
+    state.dailySelectedDate = "";
     state.error = "";
     state.activeTab = options.preserveView ? previousActiveTab : options.defaultTab || "performance";
     if (options.cacheStatus) state.cacheStatus = options.cacheStatus;
@@ -3245,6 +3315,7 @@ function resetReport() {
   state.search = "";
   state.sourceName = "";
   state.reportFingerprint = "";
+  state.dailySelectedDate = "";
   state.benchmarkData = null;
   renderUpload();
 }

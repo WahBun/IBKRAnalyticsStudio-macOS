@@ -1,6 +1,6 @@
 [package]
 name = "ibkr-analytics-studio"
-version = "2.2.9"
+version = "2.2.10"
 description = "Local-first Interactive Brokers Activity Statement analytics app"
 authors = ["G061206"]
 edition = "2021"

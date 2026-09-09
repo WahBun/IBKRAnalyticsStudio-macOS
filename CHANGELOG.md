@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.2.10
+
+Daily review and privacy polish.
+
+- Added click-to-filter behavior on the Daily P/L calendar so the trade history table can focus on one selected day, with a quick return to the full monthly list.
+- Added the position amount privacy toggle to the Overview allocation share card.
+- Replaced the top refresh status help marker with a warning-style indicator.
+
 ## v2.1.25-macos.1
 
 Local return summary alignment update.
