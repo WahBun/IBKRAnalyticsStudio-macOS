@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.2.13";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.13";
-import { parseIbkrReport } from "./parser.js?v=2.2.13";
+import { decodeReportFile } from "./encoding.js?v=2.2.14";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.14";
+import { parseIbkrReport } from "./parser.js?v=2.2.14";
 
 const app = document.querySelector("#app");
 
@@ -357,10 +357,12 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.13";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.14";
+const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.14";
+const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.14";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
-const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9", "#67e8f9", "#5eead4"];
+const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#8b5cf6", "#f59e0b", "#ef4444", "#22c55e", "#06b6d4", "#60a5fa"];
 const SHARE_IMAGE_FONT = 'Inter, "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif';
 const FLEX_TOKEN_STORAGE_KEY = "ibkr-flex-token";
 const FLEX_QUERY_ID_STORAGE_KEY = "ibkr-flex-query-id";
@@ -368,7 +370,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
-const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.13";
+const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.14";
 const BENCHMARK_FETCH_TIMEOUT_MS = 5500;
 const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark";
 const POSITION_AMOUNTS_HIDDEN_STORAGE_KEY = "ibkr-position-amounts-hidden";
@@ -376,7 +378,7 @@ const BENCHMARK_OPTIONS = {
   none: { id: "none", label: "No Benchmark", shortLabel: "None" },
   sp500: { id: "sp500", label: "S&P 500", shortLabel: "S&P 500" }
 };
-const APP_VERSION = "2.2.13";
+const APP_VERSION = "2.2.14";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
@@ -849,8 +851,14 @@ function renderFlexSyncStatus() {
   ].filter(Boolean).join(" ");
   const detail = refreshStatusHelpText();
   return `
-    <span class="${className}" data-tooltip="${escapeAttribute(statusTitle)}" tabindex="0">${escapeHtml(displayStatus)}</span>
-    <span class="sync-help" data-tooltip="${escapeAttribute(detail)}" aria-label="${escapeAttribute(t("refreshHelp"))}" role="img" tabindex="0">⚠️</span>
+    <span class="sync-tooltip-anchor">
+      <span class="${className}" tabindex="0">${escapeHtml(displayStatus)}</span>
+      <span class="sync-tooltip-panel" role="tooltip">${escapeHtml(statusTitle)}</span>
+    </span>
+    <span class="sync-tooltip-anchor">
+      <span class="sync-help" aria-label="${escapeAttribute(t("refreshHelp"))}" role="img" tabindex="0">⚠️</span>
+      <span class="sync-tooltip-panel" role="tooltip">${escapeHtml(detail)}</span>
+    </span>
   `;
 }
 
@@ -945,7 +953,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.2.13" alt="" />
+        <img src="./assets/app-logo.png?v=2.2.14" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1496,10 +1504,17 @@ function renderPositionAssetPie(positions, currency, cash = 0, options = {}) {
   return renderInteractivePie(rows, currency, {
     colors: POSITION_PIE_COLORS,
     layoutClass: "position-pie-layout",
-    chartClass: "asset-pie",
+    chartClass: "asset-pie is-portfolio-wheel",
     legendClass: "position-pie-legend",
     ariaLabel: "持仓资产分布",
-    hideAmounts: options.hideAmounts
+    hideAmounts: options.hideAmounts,
+    showSliceLabels: true,
+    showSliceSeparators: true,
+    sliceLabelMode: "detail",
+    centerImages: {
+      dark: PORTFOLIO_CENTER_DARK_SRC,
+      light: PORTFOLIO_CENTER_LIGHT_SRC
+    }
   });
 }
 
@@ -1571,10 +1586,13 @@ function renderDailyTradeChart(rows, month) {
   for (let day = 1; day <= daysInMonth; day += 1) {
     const row = byDay.get(day);
     const count = row?.tradeCount || 0;
+    const date = `${month}-${String(day).padStart(2, "0")}`;
+    const tooltip = `${date}: ${formatNumber(count)} trades`;
     bars.push(`
-      <div class="daily-bar-column" title="${escapeAttribute(`${month}-${String(day).padStart(2, "0")}: ${formatNumber(count)} trades`)}">
+      <div class="daily-bar-column" tabindex="0">
         <div class="daily-bar" style="height:${Math.max(count ? 8 : 2, count / maxCount * 150)}px"></div>
         <span>${String(day).padStart(2, "0")}</span>
+        <div class="daily-tooltip" role="tooltip">${escapeHtml(tooltip)}</div>
       </div>
     `);
   }
@@ -2090,10 +2108,9 @@ function renderAllocationPie(rows, currency, options = {}) {
   return renderInteractivePie(pieRows, currency, {
     colors: PIE_COLORS,
     layoutClass: "allocation-pie",
-    chartClass: "pie-visual",
+    chartClass: "pie-visual is-solid",
     legendClass: "pie-legend",
     ariaLabel: "资产配置",
-    centerLabel: formatPercent(100),
     hideAmounts: options.hideAmounts
   });
 }
@@ -2109,11 +2126,18 @@ function renderInteractivePie(rows, currency, options = {}) {
   const ariaLabel = options.ariaLabel || "资产配置";
   const centerLabel = options.centerLabel || "";
   const hideAmounts = Boolean(options.hideAmounts);
+  const showSliceLabels = Boolean(options.showSliceLabels);
+  const showSliceSeparators = Boolean(options.showSliceSeparators);
+  const centerImage = options.centerImage || "";
+  const centerImages = options.centerImages || null;
+  const sliceLabelMode = options.sliceLabelMode || "compact";
   const hiddenAmount = "••••";
   const total = sourceRows.reduce((sum, row) => sum + Math.abs(row.value), 0) || 1;
   let cursor = 0;
 
   const segments = [];
+  const sliceLabels = [];
+  const sliceSeparators = [];
   const hitSlices = sourceRows.map((row, index) => {
     const value = Math.abs(row.value);
     const percent = row.weight || value / total;
@@ -2127,6 +2151,17 @@ function renderInteractivePie(rows, currency, options = {}) {
     const dashOffset = -cursor;
     cursor += percentValue;
     segments.push(`${colors[index % colors.length]} ${start.toFixed(2)}% ${end.toFixed(2)}%`);
+    const color = colors[index % colors.length];
+    if (showSliceLabels && shouldShowPieSliceLabel(percentValue, sourceRows.length)) {
+      sliceLabels.push(renderPieSliceLabel(label, percentLabel, start, end, {
+        mode: sliceLabelMode,
+        color,
+        sliceCount: sourceRows.length
+      }));
+    }
+    if (showSliceSeparators) {
+      sliceSeparators.push(renderPieSeparator(start, color));
+    }
 
     return `
       <circle class="pie-hit-slice"
@@ -2138,16 +2173,25 @@ function renderInteractivePie(rows, currency, options = {}) {
         stroke="transparent"
         stroke-dasharray="${percentValue.toFixed(4)} ${(100 - percentValue).toFixed(4)}"
         stroke-dashoffset="${dashOffset.toFixed(4)}"
-        data-pie-tooltip="${escapeAttribute(tooltip)}">
-        <title>${escapeHtml(tooltip)}</title>
-      </circle>
+        data-pie-tooltip="${escapeAttribute(tooltip)}"></circle>
     `;
   }).join("");
 
   return `
     <div class="${escapeAttribute(layoutClass)}">
       <div class="${escapeAttribute(chartClass)}" style="--pie-gradient:${segments.join(", ")};" role="img" aria-label="${escapeAttribute(ariaLabel)}">
-        ${centerLabel ? `<span>${escapeHtml(centerLabel)}</span>` : ""}
+        ${sliceSeparators.join("")}
+        ${sliceLabels.join("")}
+        ${centerImages ? `
+          <span class="pie-center-image">
+            <img class="pie-center-image-light" src="${escapeAttribute(centerImages.light || centerImages.dark || "")}" alt="" />
+            <img class="pie-center-image-dark" src="${escapeAttribute(centerImages.dark || centerImages.light || "")}" alt="" />
+          </span>
+        ` : centerImage ? `
+          <span class="pie-center-image">
+            <img src="${escapeAttribute(centerImage)}" alt="" />
+          </span>
+        ` : centerLabel ? `<span class="pie-center-label">${escapeHtml(centerLabel)}</span>` : ""}
         <svg class="pie-hit-map" viewBox="0 0 200 200" aria-hidden="true">
           <g transform="rotate(-90 100 100)">
             ${hitSlices}
@@ -2179,6 +2223,43 @@ function renderInteractivePie(rows, currency, options = {}) {
       </div>
     </div>
   `;
+}
+
+function renderPieSliceLabel(label, percentLabel, start, end, options = {}) {
+  const percent = Math.max(0, end - start);
+  const middle = (start + end) / 2;
+  const radians = middle / 100 * Math.PI * 2;
+  const isDetail = options.mode === "detail";
+  const color = options.color || "#38bdf8";
+  const radius = isDetail
+    ? percent < 5 ? 41 : percent < 9 ? 39 : percent < 16 ? 37 : 35
+    : percent < 7 ? 27 : percent < 13 ? 28 : 30;
+  const x = 50 + Math.sin(radians) * radius;
+  const y = 50 - Math.cos(radians) * radius;
+  const showPercent = isDetail && percent >= 3;
+  const className = [
+    "pie-slice-label",
+    isDetail ? "is-detail" : "",
+    percent < 9 ? "is-small" : "",
+    percent < 5 ? "is-tiny" : "",
+    percent < 3 ? "is-micro" : ""
+  ].filter(Boolean).join(" ");
+  const labelHtml = showPercent
+    ? `<strong>${escapeHtml(percentLabel)}</strong><em>${escapeHtml(label)}</em>`
+    : `<em>${escapeHtml(label)}</em>`;
+
+  return `<span class="${className}" style="--slice-label-x:${x.toFixed(2)}%;--slice-label-y:${y.toFixed(2)}%;--slice-color:${escapeAttribute(color)}">${labelHtml}</span>`;
+}
+
+function shouldShowPieSliceLabel(percent, sliceCount) {
+  if (sliceCount <= 8) return true;
+  if (sliceCount <= 12) return percent >= 6;
+  return percent >= 7;
+}
+
+function renderPieSeparator(start, color = "#38bdf8") {
+  const angle = start * 3.6 - 90;
+  return `<i class="pie-separator" style="--separator-angle:${angle.toFixed(3)}deg;--separator-color:${escapeAttribute(color)}"></i>`;
 }
 
 function renderMonthlyChart(rows, currency) {
@@ -3234,7 +3315,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.13");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.14");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
