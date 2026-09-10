@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.2.15";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.15";
-import { parseIbkrReport } from "./parser.js?v=2.2.15";
+import { decodeReportFile } from "./encoding.js?v=2.2.16";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.16";
+import { parseIbkrReport } from "./parser.js?v=2.2.16";
 
 const app = document.querySelector("#app");
 
@@ -368,10 +368,10 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.15";
-const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.15";
-const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.15";
-const PORTFOLIO_SHARE_BACKGROUND_SRC = "./assets/portfolio-share-background.png?v=2.2.15";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.16";
+const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.16";
+const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.16";
+const PORTFOLIO_SHARE_BACKGROUND_SRC = "./assets/portfolio-share-background.png?v=2.2.16";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#8b5cf6", "#f59e0b", "#ef4444", "#22c55e", "#06b6d4", "#60a5fa"];
@@ -382,7 +382,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
-const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.15";
+const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.16";
 const BENCHMARK_FETCH_TIMEOUT_MS = 5500;
 const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark";
 const POSITION_AMOUNTS_HIDDEN_STORAGE_KEY = "ibkr-position-amounts-hidden";
@@ -390,8 +390,9 @@ const BENCHMARK_OPTIONS = {
   none: { id: "none", label: "No Benchmark", shortLabel: "None" },
   sp500: { id: "sp500", label: "S&P 500", shortLabel: "S&P 500" }
 };
-const APP_VERSION = "2.2.15";
+const APP_VERSION = "2.2.16";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
+const DEFAULT_REPORT_TAB = "data";
 
 let shareLogoImagePromise = null;
 const portfolioCenterImagePromises = new Map();
@@ -426,7 +427,7 @@ function normalizeBenchmarkSelection(value) {
 
 const state = {
   data: null,
-  activeTab: "performance",
+  activeTab: DEFAULT_REPORT_TAB,
   error: "",
   search: "",
   sourceName: "",
@@ -969,7 +970,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.2.15" alt="" />
+        <img src="./assets/app-logo.png?v=2.2.16" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -2977,7 +2978,7 @@ async function hydrateCachedFlexReport() {
 
   const parsed = parseText(cached.text, cached.sourceName || "cached-flex-report.csv", {
     preserveView: false,
-    defaultTab: "daily",
+    defaultTab: DEFAULT_REPORT_TAB,
     cacheStatus: `已载入本机缓存 ${formatDateTime(cached.fetchedAt)}`
   });
 
@@ -3191,7 +3192,7 @@ function requestFlexReport({ background = false } = {}) {
     state.flexStatus = "IBKR Flex report downloaded. Parsing...";
     const parsed = parseText(reportText, sourceName, {
       preserveView: background,
-      defaultTab: "daily",
+      defaultTab: DEFAULT_REPORT_TAB,
       keepExistingOnError: background,
       cacheStatus: background ? `报表已更新 ${formatDateTime(fetchedAt)}` : `已缓存 ${formatDateTime(fetchedAt)}`
     });
@@ -3310,7 +3311,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.15");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.16");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -3365,7 +3366,7 @@ function parseText(text, sourceName, options = {}) {
     state.search = options.preserveView ? previousSearch : "";
     state.dailySelectedDate = "";
     state.error = "";
-    state.activeTab = options.preserveView ? previousActiveTab : options.defaultTab || "performance";
+    state.activeTab = options.preserveView ? previousActiveTab : options.defaultTab || DEFAULT_REPORT_TAB;
     if (options.cacheStatus) state.cacheStatus = options.cacheStatus;
     state.shareOpen = options.preserveView
       ? previousShareOpen
