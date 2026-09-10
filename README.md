@@ -21,6 +21,12 @@ IBKR-Analytics-Studio-2.2.16-macos-arm64.dmg
 3. 第一次打开若 macOS 提示未验证开发者，可右键 App 后选择 **Open**。
 4. 如果仍被拦截，打开 **System Settings -> Privacy & Security**，在安全提示处选择 **Open Anyway**，再回到 App 选择 **Open**。
 
+安装录屏：
+
+[点击查看 macOS 安装过程](assets/install-macos-demo.mov)
+
+<video src="assets/install-macos-demo.mov" controls width="720"></video>
+
 `v2.1.16` 起，DMG 内的 App 会在打包时重新签名并校验，避免下载到其他 Mac 后因为签名损坏被提示“文件已损坏”。当前包仍未接 Apple Developer ID 公证；若 macOS 继续拦截，这是未公证提示，不是安装包损坏。
 
 当前 macOS 包面向 Apple Silicon/arm64。Intel Mac 需要后续单独构建 `x86_64` 或 universal 包。
@@ -32,7 +38,7 @@ IBKR-Analytics-Studio-2.2.16-macos-arm64.dmg
 - Tauri/WebKit 桌面壳。
 - Rust 原生桥接 IBKR Flex Web Service。
 - 自动识别常见本地代理端口，兼容 Veee/Clash 类网络环境。
-- 成功拉取 Flex 报表后默认进入 Daily 页面。
+- 成功拉取 Flex 报表后默认进入 Data Quality 页面，避免安装录屏时暴露持仓或成交记录。
 - macOS 圆角 App 图标和 `.dmg` 分发包。
 
 IBKR Analytics Studio 是一个面向 Interactive Brokers 账户报表的本地优先 macOS 分析应用。当前版本主推 **IBKR Flex API 自动拉取报表**：应用通过本机 Tauri 桌面壳请求 IBKR Flex Web Service，拿到 CSV 报表后在本机解析和展示。
