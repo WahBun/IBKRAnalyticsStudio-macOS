@@ -11,7 +11,7 @@
 Releases 页面提供以下 macOS 安装包：
 
 ```text
-IBKR-Analytics-Studio-2.2.16-macos-arm64.dmg
+IBKR-Analytics-Studio-2.2.17-macos-arm64.dmg
 ```
 
 安装方式：
@@ -38,7 +38,7 @@ IBKR-Analytics-Studio-2.2.16-macos-arm64.dmg
 - Tauri/WebKit 桌面壳。
 - Rust 原生桥接 IBKR Flex Web Service。
 - 自动识别常见本地代理端口，兼容 Veee/Clash 类网络环境。
-- 成功拉取 Flex 报表后默认进入 Data Quality 页面，避免安装录屏时暴露持仓或成交记录。
+- 成功拉取 Flex 报表后默认进入 Daily 页面，方便直接复盘当日成交与盈亏。
 - macOS 圆角 App 图标和 `.dmg` 分发包。
 
 IBKR Analytics Studio 是一个面向 Interactive Brokers 账户报表的本地优先 macOS 分析应用。当前版本主推 **IBKR Flex API 自动拉取报表**：应用通过本机 Tauri 桌面壳请求 IBKR Flex Web Service，拿到 CSV 报表后在本机解析和展示。
@@ -58,7 +58,7 @@ IBKR Analytics Studio 是一个面向 Interactive Brokers 账户报表的本地�
 推荐直接下载本仓库 Releases 中的 macOS DMG：
 
 ```text
-IBKR-Analytics-Studio-2.2.16-macos-arm64.dmg
+IBKR-Analytics-Studio-2.2.17-macos-arm64.dmg
 ```
 
 安装后打开 `IBKR Analytics Studio.app`，参考首页教程获取 **IBKR Flex API**：
@@ -285,7 +285,7 @@ npm run tauri:dmg
 输出位置：
 
 ```text
-outputs/IBKR-Analytics-Studio-2.2.16-macos-arm64.dmg
+outputs/IBKR-Analytics-Studio-2.2.17-macos-arm64.dmg
 ```
 
 ### Flex API 和 IB Gateway 的区别

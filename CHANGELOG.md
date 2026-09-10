@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.2.17
+
+Daily default and refresh note polish.
+
+- Restored Daily as the default report page after loading a Flex report.
+- Added a refresh warning note for IBKR holiday/non-trading-day statement update delays.
+
 ## v2.2.13
 
 Status tooltip placement fix.
