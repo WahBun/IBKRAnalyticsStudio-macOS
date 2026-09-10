@@ -1,12 +1,15 @@
+use base64::{engine::general_purpose, Engine as _};
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use reqwest::{Client, Proxy, StatusCode, Url};
 use serde::Serialize;
 use std::collections::HashSet;
+use std::fs;
 use std::net::{SocketAddr, TcpStream};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-const APP_VERSION: &str = "2.2.14";
+const APP_VERSION: &str = "2.2.15";
 const FLEX_BASE_URL: &str =
     "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService";
 const FRED_GRAPH_CSV_URL: &str = "https://fred.stlouisfed.org/graph/fredgraph.csv";
@@ -29,6 +32,14 @@ struct BenchmarkFetchResponse {
     dates: Vec<String>,
     closes: Vec<f64>,
     source: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveFileResponse {
+    filename: String,
+    path: String,
+    revealed: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -118,6 +129,71 @@ async fn benchmark_fetch(symbol: String, start: String, end: String) -> Result<S
         transport_errors.len(),
         transport_errors.join(" | ")
     ))
+}
+
+#[tauri::command]
+fn save_share_image(filename: String, png_base64: String) -> Result<SaveFileResponse, String> {
+    let filename = sanitize_download_filename(&filename, "ibkr-share", "png");
+    let payload = png_base64
+        .trim()
+        .strip_prefix("data:image/png;base64,")
+        .unwrap_or_else(|| png_base64.trim());
+    let bytes = general_purpose::STANDARD
+        .decode(payload)
+        .map_err(|error| format!("Could not decode the PNG image. {error}"))?;
+
+    if !bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]) {
+        return Err("The generated share image is not a valid PNG.".to_string());
+    }
+
+    let downloads = downloads_dir()?;
+    fs::create_dir_all(&downloads)
+        .map_err(|error| format!("Could not open the Downloads folder. {error}"))?;
+    let path = unique_download_path(&downloads, &filename);
+    fs::write(&path, bytes).map_err(|error| format!("Could not save the PNG image. {error}"))?;
+    let revealed = reveal_in_finder(&path).is_ok();
+
+    let filename = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(&filename)
+        .to_string();
+
+    Ok(SaveFileResponse {
+        filename,
+        path: path.to_string_lossy().to_string(),
+        revealed,
+    })
+}
+
+#[tauri::command]
+fn save_json_file(filename: String, json_text: String) -> Result<SaveFileResponse, String> {
+    let filename = sanitize_download_filename(&filename, "ibkr-analytics", "json");
+    let trimmed = json_text.trim_start();
+
+    if !(trimmed.starts_with('{') || trimmed.starts_with('[')) {
+        return Err("The exported report is not valid JSON text.".to_string());
+    }
+
+    let downloads = downloads_dir()?;
+    fs::create_dir_all(&downloads)
+        .map_err(|error| format!("Could not open the Downloads folder. {error}"))?;
+    let path = unique_download_path(&downloads, &filename);
+    fs::write(&path, json_text.as_bytes())
+        .map_err(|error| format!("Could not save the JSON file. {error}"))?;
+    let revealed = reveal_in_finder(&path).is_ok();
+
+    let filename = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(&filename)
+        .to_string();
+
+    Ok(SaveFileResponse {
+        filename,
+        path: path.to_string_lossy().to_string(),
+        revealed,
+    })
 }
 
 async fn fetch_fred_benchmark_with_client(
@@ -566,6 +642,83 @@ fn child_text(node: roxmltree::Node<'_, '_>, name: &str) -> String {
         .to_string()
 }
 
+fn sanitize_download_filename(input: &str, fallback_stem: &str, extension: &str) -> String {
+    let mut output = String::new();
+    for character in input.trim().chars() {
+        if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+            output.push(character);
+        } else if character.is_whitespace() {
+            output.push('-');
+        }
+    }
+
+    let output = output.trim_matches(['-', '_', '.']);
+    let mut filename = if output.is_empty() {
+        fallback_stem.to_string()
+    } else {
+        output.to_string()
+    };
+
+    let suffix = format!(".{extension}");
+    if !filename.to_ascii_lowercase().ends_with(&suffix) {
+        filename.push_str(&suffix);
+    }
+
+    filename
+}
+
+fn downloads_dir() -> Result<PathBuf, String> {
+    let home = std::env::var("HOME")
+        .map_err(|_| "Could not find the current user's home folder.".to_string())?;
+    Ok(PathBuf::from(home).join("Downloads"))
+}
+
+fn unique_download_path(downloads: &Path, filename: &str) -> PathBuf {
+    let candidate = downloads.join(filename);
+    if !candidate.exists() {
+        return candidate;
+    }
+
+    let path = Path::new(filename);
+    let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or("ibkr-share");
+    let extension = path.extension().and_then(|value| value.to_str()).unwrap_or("png");
+
+    for index in 2..1000 {
+        let next = downloads.join(format!("{stem}-{index}.{extension}"));
+        if !next.exists() {
+            return next;
+        }
+    }
+
+    downloads.join(format!("{stem}-latest.{extension}"))
+}
+
+fn reveal_in_finder(path: &Path) -> Result<(), String> {
+    let reveal_status = Command::new("open")
+        .arg("-R")
+        .arg(path)
+        .status()
+        .map_err(|error| format!("Could not open Finder. {error}"))?;
+
+    if reveal_status.success() {
+        return Ok(());
+    }
+
+    let folder = path
+        .parent()
+        .ok_or_else(|| "Could not locate the saved image folder.".to_string())?;
+    let folder_status = Command::new("open")
+        .arg(folder)
+        .status()
+        .map_err(|error| format!("Could not open the saved image folder. {error}"))?;
+
+    if folder_status.success() {
+        Ok(())
+    } else {
+        Err("Finder did not open the saved image location.".to_string())
+    }
+}
+
 impl FlexStatus {
     fn to_user_message(&self, fallback: &str) -> String {
         if !self.error_code.trim().is_empty() || !self.error_message.trim().is_empty() {
@@ -583,7 +736,12 @@ impl FlexStatus {
 
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![flex_fetch, benchmark_fetch])
+        .invoke_handler(tauri::generate_handler![
+            flex_fetch,
+            benchmark_fetch,
+            save_share_image,
+            save_json_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running IBKR Analytics Studio");
 }

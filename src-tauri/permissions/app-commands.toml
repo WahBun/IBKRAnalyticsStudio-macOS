@@ -1,4 +1,4 @@
 [[permission]]
 identifier = "allow-app-commands"
 description = "Allows the main window to call app-owned commands for Flex reports and benchmark data."
-commands.allow = ["flex_fetch", "benchmark_fetch"]
+commands.allow = ["flex_fetch", "benchmark_fetch", "save_share_image", "save_json_file"]

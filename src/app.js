@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.2.14";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.14";
-import { parseIbkrReport } from "./parser.js?v=2.2.14";
+import { decodeReportFile } from "./encoding.js?v=2.2.15";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.15";
+import { parseIbkrReport } from "./parser.js?v=2.2.15";
 
 const app = document.querySelector("#app");
 
@@ -75,7 +75,7 @@ const copy = {
     positionsSubtitle: "按标的、资产类别和方向查看当前 Open Positions。",
     dataHeading: "数据质量",
     dataSubtitle: "核对解析区块、汇率和诊断信息，适合排查报表字段缺失。",
-    shareDialogTitle: "生成社交分享图",
+    shareDialogTitle: "导出持仓扇形图",
     shareSize: "分享图尺寸",
     shareName: "用户名",
     shareNamePlaceholder: "自定义用户名",
@@ -83,9 +83,14 @@ const copy = {
     hideEndingNav: "隐藏期末净值",
     hidePositionAmounts: "隐藏持仓金额",
     showPositionAmounts: "显示持仓金额",
+    square: "方图",
     landscape: "横版",
     portrait: "竖版",
     downloadPng: "下载 PNG",
+    downloadingPng: "保存中...",
+    downloadSaved: "已保存并打开文件夹",
+    downloadStarted: "下载已开始",
+    downloadFailed: "保存失败，请重试",
     close: "关闭",
     plDistribution: "盈亏分布",
     plDistributionKicker: "已实现与未实现盈亏",
@@ -159,7 +164,7 @@ const copy = {
     positionsSubtitle: "Review current Open Positions by symbol, asset class, and direction.",
     dataHeading: "Data Quality",
     dataSubtitle: "Check parsed sections, rates, and diagnostics for missing statement fields.",
-    shareDialogTitle: "Generate Social Share Image",
+    shareDialogTitle: "Export Portfolio Wheel",
     shareSize: "Share image size",
     shareName: "Username",
     shareNamePlaceholder: "Custom username",
@@ -167,9 +172,14 @@ const copy = {
     hideEndingNav: "Hide ending NAV",
     hidePositionAmounts: "Hide position amounts",
     showPositionAmounts: "Show position amounts",
+    square: "Square",
     landscape: "Landscape",
     portrait: "Portrait",
     downloadPng: "Download PNG",
+    downloadingPng: "Saving...",
+    downloadSaved: "Saved and opened in Finder",
+    downloadStarted: "Download started",
+    downloadFailed: "Save failed. Please try again.",
     close: "Close",
     plDistribution: "P/L Distribution",
     plDistributionKicker: "Realized and unrealized P/L",
@@ -353,13 +363,15 @@ const icons = {
 };
 
 const SHARE_IMAGE_SIZES = {
+  square: { width: 1080, height: 1080 },
   landscape: { width: 1200, height: 630 },
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.14";
-const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.14";
-const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.14";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.15";
+const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.15";
+const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.15";
+const PORTFOLIO_SHARE_BACKGROUND_SRC = "./assets/portfolio-share-background.png?v=2.2.15";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#8b5cf6", "#f59e0b", "#ef4444", "#22c55e", "#06b6d4", "#60a5fa"];
@@ -370,7 +382,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
-const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.14";
+const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.15";
 const BENCHMARK_FETCH_TIMEOUT_MS = 5500;
 const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark";
 const POSITION_AMOUNTS_HIDDEN_STORAGE_KEY = "ibkr-position-amounts-hidden";
@@ -378,10 +390,12 @@ const BENCHMARK_OPTIONS = {
   none: { id: "none", label: "No Benchmark", shortLabel: "None" },
   sp500: { id: "sp500", label: "S&P 500", shortLabel: "S&P 500" }
 };
-const APP_VERSION = "2.2.14";
+const APP_VERSION = "2.2.15";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 
 let shareLogoImagePromise = null;
+const portfolioCenterImagePromises = new Map();
+let portfolioShareBackgroundImagePromise = null;
 let flexCacheDbPromise = null;
 let benchmarkRequestId = 0;
 let searchRenderTimer = 0;
@@ -435,7 +449,9 @@ const state = {
   autoSampleStarted: false,
   flexGuideOpen: false,
   shareOpen: false,
-  shareFormat: "landscape",
+  shareFormat: "square",
+  shareDownloadBusy: false,
+  shareDownloadStatus: "",
   shareName: localStorage.getItem("ibkr-share-name") || "",
   shareHideName: localStorage.getItem("ibkr-share-hide-name") === "1",
   shareHideNav: localStorage.getItem("ibkr-share-hide-nav") === "1",
@@ -953,7 +969,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.2.14" alt="" />
+        <img src="./assets/app-logo.png?v=2.2.15" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1005,27 +1021,18 @@ function renderShareDialog() {
         </header>
         <div class="share-toolbar">
           <div class="segmented" role="group" aria-label="${t("shareSize")}">
+            <button class="segment share-format${state.shareFormat === "square" ? " is-active" : ""}" type="button" data-share-format="square">${t("square")}</button>
             <button class="segment share-format${state.shareFormat === "landscape" ? " is-active" : ""}" type="button" data-share-format="landscape">${t("landscape")}</button>
             <button class="segment share-format${state.shareFormat === "portrait" ? " is-active" : ""}" type="button" data-share-format="portrait">${t("portrait")}</button>
           </div>
-          <div class="share-controls">
-            <label class="share-name-field">
-              <span>${t("shareName")}</span>
-              <input id="shareNameInput" type="text" value="${escapeAttribute(state.shareName)}" placeholder="${t("shareNamePlaceholder")}" maxlength="32" />
-            </label>
-            <label class="share-check">
-              <input id="shareHideNameInput" type="checkbox"${state.shareHideName ? " checked" : ""} />
-              <span>${t("hideShareName")}</span>
-            </label>
-            <label class="share-check">
-              <input id="shareHideNavInput" type="checkbox"${state.shareHideNav ? " checked" : ""} />
-              <span>${t("hideEndingNav")}</span>
-            </label>
+          <div class="share-download-box">
+            <button class="primary-button" id="downloadShareImageButton" type="button" ${state.shareDownloadBusy ? "disabled" : ""}>${icon("download")}${state.shareDownloadBusy ? t("downloadingPng") : t("downloadPng")}</button>
+            ${state.shareDownloadStatus ? `<p class="share-download-status">${escapeHtml(state.shareDownloadStatus)}</p>` : ""}
           </div>
-          <button class="primary-button" id="downloadShareImageButton" type="button">${icon("download")}${t("downloadPng")}</button>
         </div>
         <div class="share-preview">
           <canvas id="shareImageCanvas" width="${size.width}" height="${size.height}" aria-label="分享图预览"></canvas>
+          <img id="shareImagePreview" class="share-preview-image" width="${size.width}" height="${size.height}" alt="分享图预览" hidden />
         </div>
       </section>
     </div>
@@ -1119,7 +1126,6 @@ function renderPerformance(data) {
               <h2>${t("plDistribution")}</h2>
               <p class="card-kicker">${t("plDistributionKicker")}</p>
             </div>
-            <span class="pill">${currency}</span>
           </div>
           ${renderPlDistribution(data)}
         </section>
@@ -1468,8 +1474,9 @@ function positionUnitMultiplier(row) {
   return shouldUseMultiplier && Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
 }
 
-function buildPositionAssetAllocation(positions, cash = 0, currency = "USD") {
+function buildPositionAssetAllocation(positions, cash = 0, currency = "USD", options = {}) {
   const map = new Map();
+  const respectSearch = options.respectSearch !== false;
 
   for (const position of positions) {
     const value = Math.abs(position.value);
@@ -1480,7 +1487,7 @@ function buildPositionAssetAllocation(positions, cash = 0, currency = "USD") {
   }
 
   const cashValue = Number.isFinite(cash) && cash > 0 ? cash : 0;
-  if (cashValue && searchMatch(["Cash", "现金", currency])) {
+  if (cashValue && (!respectSearch || searchMatch(["Cash", "现金", currency]))) {
     const cashLabel = state.language === "en" ? "Cash" : "现金";
     map.set(cashLabel, (map.get(cashLabel) || 0) + cashValue);
   }
@@ -2180,6 +2187,11 @@ function renderInteractivePie(rows, currency, options = {}) {
   return `
     <div class="${escapeAttribute(layoutClass)}">
       <div class="${escapeAttribute(chartClass)}" style="--pie-gradient:${segments.join(", ")};" role="img" aria-label="${escapeAttribute(ariaLabel)}">
+        ${showSliceSeparators ? `
+          <i class="pie-color-halo"></i>
+          <i class="pie-outer-rim"></i>
+          <i class="pie-inner-rim"></i>
+        ` : ""}
         ${sliceSeparators.join("")}
         ${sliceLabels.join("")}
         ${centerImages ? `
@@ -2463,27 +2475,10 @@ function bindDashboardEvents() {
 
   document.querySelectorAll("[data-share-format]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.shareFormat = button.dataset.shareFormat || "landscape";
+      state.shareFormat = button.dataset.shareFormat || "square";
+      state.shareDownloadStatus = "";
       renderDashboard();
     });
-  });
-
-  document.querySelector("#shareNameInput")?.addEventListener("input", (event) => {
-    state.shareName = event.currentTarget.value || "";
-    localStorage.setItem("ibkr-share-name", state.shareName);
-    renderShareImagePreview();
-  });
-
-  document.querySelector("#shareHideNameInput")?.addEventListener("change", (event) => {
-    state.shareHideName = event.currentTarget.checked;
-    localStorage.setItem("ibkr-share-hide-name", state.shareHideName ? "1" : "0");
-    renderShareImagePreview();
-  });
-
-  document.querySelector("#shareHideNavInput")?.addEventListener("change", (event) => {
-    state.shareHideNav = event.currentTarget.checked;
-    localStorage.setItem("ibkr-share-hide-nav", state.shareHideNav ? "1" : "0");
-    renderShareImagePreview();
   });
 
   document.querySelector("#dailyMonthSelect")?.addEventListener("change", (event) => {
@@ -3315,7 +3310,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.14");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.15");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -3446,13 +3441,37 @@ function applyBenchmarkData(json, selection, parsed, requestId, startDate, endDa
   return true;
 }
 
-function downloadJson(data) {
+async function downloadJson(data) {
   if (!data) return;
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+  const jsonText = JSON.stringify(data, null, 2);
+  const filename = `ibkr-analytics-${new Date().toISOString().slice(0, 10)}.json`;
+  const nativeResult = await saveJsonNatively(filename, jsonText);
+  if (nativeResult) return;
+
+  downloadTextViaBrowser(jsonText, filename, "application/json;charset=utf-8");
+}
+
+async function saveJsonNatively(filename, jsonText) {
+  const invoke = getTauriInvoke();
+  if (typeof invoke !== "function") return null;
+
+  try {
+    return await invoke("save_json_file", {
+      filename,
+      jsonText
+    });
+  } catch (error) {
+    console.error("Native JSON export failed", error);
+    return null;
+  }
+}
+
+function downloadTextViaBrowser(text, filename, type) {
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `ibkr-analytics-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = filename;
   document.body.append(link);
   link.click();
   link.remove();
@@ -3461,36 +3480,91 @@ function downloadJson(data) {
 
 function openShareDialog() {
   state.shareOpen = true;
+  state.shareDownloadStatus = "";
   renderDashboard();
 }
 
 function closeShareDialog() {
   state.shareOpen = false;
+  state.shareDownloadBusy = false;
   renderDashboard();
 }
 
 async function renderShareImagePreview() {
   const canvas = document.querySelector("#shareImageCanvas");
+  const preview = document.querySelector("#shareImagePreview");
   if (!canvas || !state.data) return;
-  await drawShareImage(canvas, state.data, state.shareFormat);
+  canvas.hidden = false;
+  if (preview) preview.hidden = true;
+  try {
+    await drawShareImage(canvas, state.data, state.shareFormat);
+    if (preview) {
+      preview.src = canvas.toDataURL("image/png");
+      preview.hidden = false;
+      canvas.hidden = true;
+    }
+  } catch (error) {
+    console.error("Share image preview render failed", error);
+    canvas.hidden = false;
+    if (preview) preview.hidden = true;
+  }
 }
 
 async function downloadShareImage() {
-  if (!state.data) return;
-  const canvas = document.createElement("canvas");
-  await drawShareImage(canvas, state.data, state.shareFormat);
-  const account = (state.data.accountInfo.account || "account").replace(/[^\w-]+/g, "-");
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `ibkr-share-${account}-${state.shareFormat}.png`;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }, "image/png");
+  if (!state.data || state.shareDownloadBusy) return;
+
+  state.shareDownloadBusy = true;
+  state.shareDownloadStatus = "";
+  renderDashboard();
+
+  try {
+    const canvas = document.createElement("canvas");
+    await drawShareImage(canvas, state.data, state.shareFormat);
+    const account = accountLastFourSlug(state.data.accountInfo.account);
+    const filename = `ibkr-share-${account}-${state.shareFormat}.png`;
+    const dataUrl = canvas.toDataURL("image/png");
+    const nativeResult = await saveShareImageNatively(filename, dataUrl);
+
+    if (nativeResult) {
+      state.shareDownloadStatus = nativeResult.filename
+        ? `${t("downloadSaved")}: ${nativeResult.filename}`
+        : t("downloadSaved");
+    } else {
+      await downloadCanvasViaBrowser(canvas, filename);
+      state.shareDownloadStatus = t("downloadStarted");
+    }
+  } catch (error) {
+    console.error("Share image download failed", error);
+    state.shareDownloadStatus = t("downloadFailed");
+  } finally {
+    state.shareDownloadBusy = false;
+    renderDashboard();
+  }
+}
+
+async function saveShareImageNatively(filename, dataUrl) {
+  const invoke = getTauriInvoke();
+  if (typeof invoke !== "function") return null;
+
+  const pngBase64 = dataUrl.includes(",") ? dataUrl.split(",").pop() : dataUrl;
+  return invoke("save_share_image", {
+    filename,
+    pngBase64
+  });
+}
+
+async function downloadCanvasViaBrowser(canvas, filename) {
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!blob) throw new Error("Canvas did not produce a PNG blob.");
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 async function drawShareImage(canvas, data, format) {
@@ -3501,17 +3575,428 @@ async function drawShareImage(canvas, data, format) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
-  const theme = legacyShareTheme();
+  const mode = state.theme === "dark" ? "dark" : "light";
+  const theme = portfolioWheelShareTheme(mode);
   const model = buildLegacyShareModel(data);
-  const logoImage = await loadShareLogoImage();
 
-  drawLegacyShareBackground(ctx, canvas.width, canvas.height, theme);
-
-  if (format === "portrait") {
-    drawLegacyPortraitShareImage(ctx, model, theme, logoImage);
-  } else {
-    drawLegacyLandscapeShareImage(ctx, model, theme, logoImage);
+  try {
+    drawPortfolioWheelShareImage(ctx, canvas.width, canvas.height, model, theme, null, format, null);
+    const [centerImage, backgroundImage] = await Promise.all([
+      loadPortfolioCenterImage(mode),
+      loadPortfolioShareBackground()
+    ]);
+    if (centerImage || backgroundImage) {
+      drawPortfolioWheelShareImage(ctx, canvas.width, canvas.height, model, theme, centerImage, format, backgroundImage);
+    }
+  } catch (error) {
+    console.error("Share image render failed", error);
+    drawPortfolioWheelShareFallback(ctx, canvas.width, canvas.height, theme);
   }
+}
+
+function loadPortfolioCenterImage(mode) {
+  const key = mode === "dark" ? "dark" : "light";
+  if (portfolioCenterImagePromises.has(key)) return portfolioCenterImagePromises.get(key);
+
+  const src = key === "dark" ? PORTFOLIO_CENTER_DARK_SRC : PORTFOLIO_CENTER_LIGHT_SRC;
+  const promise = loadCanvasImage(src).then((image) => {
+    if (!image) portfolioCenterImagePromises.delete(key);
+    return image;
+  });
+  portfolioCenterImagePromises.set(key, promise);
+  return promise;
+}
+
+function loadPortfolioShareBackground() {
+  if (portfolioShareBackgroundImagePromise) return portfolioShareBackgroundImagePromise;
+
+  portfolioShareBackgroundImagePromise = loadCanvasImage(PORTFOLIO_SHARE_BACKGROUND_SRC).then((image) => {
+    if (!image) portfolioShareBackgroundImagePromise = null;
+    return image;
+  });
+  return portfolioShareBackgroundImagePromise;
+}
+
+function loadCanvasImage(src) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeout = 0;
+    const image = new Image();
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      resolve(value);
+    };
+
+    timeout = window.setTimeout(() => finish(null), 900);
+    image.onload = () => finish(image);
+    image.onerror = () => finish(null);
+    image.src = new URL(src, document.baseURI).href;
+    if (image.complete && image.naturalWidth > 0) finish(image);
+  });
+}
+
+function portfolioWheelShareTheme(mode) {
+  const dark = mode === "dark";
+  return {
+    mode,
+    bg: dark ? "#101827" : "#f8fafc",
+    bgEdge: dark ? "#07111f" : "#eef6ff",
+    bgGlow: dark ? "rgba(14,165,233,0.3)" : "rgba(56,189,248,0.22)",
+    outerAura: dark ? 0.56 : 0.42,
+    ink: "#ffffff",
+    labelShadow: dark ? "rgba(0,0,0,0.56)" : "rgba(15,23,42,0.38)",
+    centerShadow: dark ? "rgba(0,0,0,0.48)" : "rgba(15,23,42,0.28)",
+    centerStroke: dark ? "rgba(226,246,255,0.74)" : "rgba(255,255,255,0.82)",
+    separator: dark ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.88)"
+  };
+}
+
+function drawPortfolioWheelShareImage(ctx, width, height, model, theme, centerImage, format, backgroundImage) {
+  const rows = (model.positionAllocation?.length ? model.positionAllocation : model.allocation)
+    .filter((row) => Math.abs(row.value) > 0);
+
+  drawPortfolioWheelShareBackground(ctx, width, height, theme, backgroundImage);
+
+  if (!rows.length) {
+    drawLegacyShareText(ctx, "暂无持仓市值", width / 2, height / 2 - 18, {
+      size: Math.max(28, Math.min(width, height) * 0.045),
+      weight: 820,
+      color: theme.ink,
+      align: "center"
+    });
+    return;
+  }
+
+  const isPortrait = format === "portrait";
+  const isSquare = format === "square";
+  const radius = isPortrait
+    ? Math.min(width * 0.44, height * 0.32)
+    : isSquare
+      ? Math.min(width, height) * 0.42
+      : Math.min(height * 0.6, width * 0.32);
+  const cx = width / 2;
+  const cy = isPortrait ? height * 0.4 : isSquare ? height * 0.49 : height * 0.51;
+  drawPortfolioWheelCanvas(ctx, rows, cx, cy, radius, centerImage, theme, { hasBackground: Boolean(backgroundImage) });
+}
+
+function drawPortfolioWheelShareBackground(ctx, width, height, theme, backgroundImage = null) {
+  ctx.clearRect(0, 0, width, height);
+  if (backgroundImage) {
+    drawCanvasCoverImage(ctx, backgroundImage, 0, 0, width, height);
+
+    const vignette = ctx.createRadialGradient(width / 2, height * 0.45, 0, width / 2, height * 0.52, Math.max(width, height) * 0.72);
+    vignette.addColorStop(0, "rgba(2, 6, 23, 0)");
+    vignette.addColorStop(0.62, "rgba(2, 6, 23, 0.06)");
+    vignette.addColorStop(1, "rgba(2, 6, 23, 0.28)");
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, width, height);
+
+    const focus = ctx.createRadialGradient(width / 2, height * 0.5, 0, width / 2, height * 0.5, Math.max(width, height) * 0.54);
+    focus.addColorStop(0, "rgba(255,255,255,0.035)");
+    focus.addColorStop(0.45, "rgba(255,255,255,0.012)");
+    focus.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = focus;
+    ctx.fillRect(0, 0, width, height);
+    return;
+  }
+
+  const gradient = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, Math.max(width, height) * 0.72);
+  gradient.addColorStop(0, theme.bgGlow);
+  gradient.addColorStop(0.5, theme.bg);
+  gradient.addColorStop(1, theme.bgEdge);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+}
+
+function drawPortfolioWheelShareFallback(ctx, width, height, theme) {
+  drawPortfolioWheelShareBackground(ctx, width, height, theme);
+  drawLegacyShareText(ctx, "Portfolio wheel unavailable", width / 2, height / 2 - 18, {
+    size: Math.max(28, Math.min(width, height) * 0.038),
+    weight: 820,
+    color: theme.ink,
+    align: "center"
+  });
+}
+
+function drawPortfolioWheelCanvas(ctx, rows, cx, cy, radius, centerImage, theme, options = {}) {
+  const hasBackground = options.hasBackground;
+  const total = rows.reduce((sum, row) => sum + Math.abs(row.value), 0) || 1;
+  const centerRadius = radius * 0.305;
+  let start = -Math.PI / 2;
+  const slices = rows.map((row, index) => {
+    const value = Math.abs(row.value);
+    const percent = row.weight || value / total;
+    const end = start + Math.PI * 2 * percent;
+    const slice = {
+      row,
+      color: POSITION_PIE_COLORS[index % POSITION_PIE_COLORS.length],
+      start,
+      end,
+      percent: percent * 100
+    };
+    start = end;
+    return slice;
+  });
+
+  ctx.save();
+  ctx.globalAlpha = hasBackground ? 0.94 : theme.outerAura;
+  ctx.globalCompositeOperation = "lighter";
+  for (const slice of slices) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius + radius * 0.025, slice.start, slice.end);
+    ctx.strokeStyle = slice.color;
+    ctx.lineWidth = hasBackground ? radius * 0.028 : radius * 0.13;
+    ctx.shadowColor = slice.color;
+    ctx.shadowBlur = hasBackground ? radius * 0.54 : radius * 0.25;
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  if (hasBackground) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.clip();
+    const glass = ctx.createRadialGradient(cx, cy, centerRadius * 0.95, cx, cy, radius);
+    glass.addColorStop(0, "rgba(255,255,255,0.018)");
+    glass.addColorStop(0.58, "rgba(15,23,42,0.018)");
+    glass.addColorStop(1, "rgba(15,23,42,0.045)");
+    ctx.fillStyle = glass;
+    ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+    ctx.restore();
+  }
+
+  ctx.save();
+  for (const slice of slices) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius + 3, slice.start, slice.end);
+    ctx.strokeStyle = slice.color;
+    ctx.lineWidth = hasBackground ? radius * 0.012 : radius * 0.048;
+    ctx.shadowColor = slice.color;
+    ctx.shadowBlur = hasBackground ? radius * 0.18 : radius * 0.15;
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  for (const slice of slices) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, radius, slice.start, slice.end);
+    ctx.closePath();
+    ctx.globalCompositeOperation = "source-over";
+    const fill = ctx.createRadialGradient(cx, cy, centerRadius * 0.8, cx, cy, radius);
+    fill.addColorStop(0, colorWithAlpha(slice.color, hasBackground ? 0.004 : 0.34));
+    fill.addColorStop(0.58, colorWithAlpha(slice.color, hasBackground ? 0.026 : 0.62));
+    fill.addColorStop(1, colorWithAlpha(slice.color, hasBackground ? 0.095 : 0.78));
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (!hasBackground) {
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = 0.34;
+    for (const slice of slices) {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, radius, slice.start, slice.end);
+      ctx.closePath();
+      ctx.fillStyle = slice.color;
+      ctx.shadowColor = slice.color;
+      ctx.shadowBlur = radius * 0.08;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.clip();
+  const sheen = ctx.createRadialGradient(cx - radius * 0.36, cy - radius * 0.42, 0, cx, cy, radius);
+  sheen.addColorStop(0, hasBackground ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.23)");
+  sheen.addColorStop(0.42, hasBackground ? "rgba(255,255,255,0.035)" : "rgba(255,255,255,0.08)");
+  sheen.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = sheen;
+  ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+  ctx.restore();
+
+  for (const slice of slices) {
+    drawWheelArc(ctx, cx, cy, radius - 1, slice.start, slice.end, slice.color, radius * (hasBackground ? 0.01 : 0.011), radius * (hasBackground ? 0.13 : 0.04));
+    drawWheelSeparator(ctx, cx, cy, centerRadius * 1.05, radius, slice.start, slice.color, theme, hasBackground);
+  }
+
+  const lastSlice = slices[slices.length - 1];
+  drawWheelSeparator(ctx, cx, cy, centerRadius * 1.05, radius, lastSlice.end, lastSlice.color, theme, hasBackground);
+  for (const slice of slices) {
+    drawWheelArc(ctx, cx, cy, centerRadius + radius * 0.025, slice.start, slice.end, slice.color, radius * (hasBackground ? 0.013 : 0.012), radius * (hasBackground ? 0.13 : 0.06));
+  }
+  drawWheelCenter(ctx, cx, cy, centerRadius, centerImage, theme);
+
+  for (const slice of slices) {
+    if (!shouldShowPieSliceLabel(slice.percent, slices.length)) continue;
+    drawPortfolioWheelCanvasLabel(ctx, slice, cx, cy, radius, centerRadius, theme);
+  }
+}
+
+function drawWheelArc(ctx, cx, cy, radius, start, end, color, lineWidth, glow) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, start, end);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = glow;
+  ctx.stroke();
+    ctx.restore();
+  }
+
+function drawWheelSeparator(ctx, cx, cy, innerRadius, outerRadius, angle, color, theme, hasBackground = false) {
+  if (hasBackground) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(angle) * innerRadius, cy + Math.sin(angle) * innerRadius);
+    ctx.lineTo(cx + Math.cos(angle) * outerRadius, cy + Math.sin(angle) * outerRadius);
+    ctx.strokeStyle = colorWithAlpha(color, 0.74);
+    ctx.lineWidth = Math.max(4, outerRadius * 0.012);
+    ctx.shadowColor = color;
+    ctx.shadowBlur = outerRadius * 0.16;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(cx + Math.cos(angle) * innerRadius, cy + Math.sin(angle) * innerRadius);
+  ctx.lineTo(cx + Math.cos(angle) * outerRadius, cy + Math.sin(angle) * outerRadius);
+  ctx.strokeStyle = theme.separator;
+  ctx.lineWidth = Math.max(1.5, outerRadius * (hasBackground ? 0.0045 : 0.006));
+  ctx.shadowColor = color;
+  ctx.shadowBlur = outerRadius * (hasBackground ? 0.07 : 0.045);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawWheelCenter(ctx, cx, cy, radius, image, theme) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius + 13, 0, Math.PI * 2);
+  ctx.strokeStyle = theme.centerStroke;
+  ctx.lineWidth = Math.max(3, radius * 0.05);
+  ctx.shadowColor = theme.centerShadow;
+  ctx.shadowBlur = radius * 0.32;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.clip();
+  if (image) {
+    drawCanvasCoverImage(ctx, image, cx - radius, cy - radius, radius * 2, radius * 2);
+  } else {
+    ctx.fillStyle = theme.bgEdge;
+    ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = theme.centerStroke;
+  ctx.lineWidth = Math.max(2, radius * 0.035);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCanvasCoverImage(ctx, image, x, y, width, height) {
+  const sourceRatio = image.width / image.height;
+  const targetRatio = width / height;
+  let sourceX = 0;
+  let sourceY = 0;
+  let sourceW = image.width;
+  let sourceH = image.height;
+
+  if (sourceRatio > targetRatio) {
+    sourceW = image.height * targetRatio;
+    sourceX = (image.width - sourceW) / 2;
+  } else {
+    sourceH = image.width / targetRatio;
+    sourceY = (image.height - sourceH) / 2;
+  }
+
+  ctx.drawImage(image, sourceX, sourceY, sourceW, sourceH, x, y, width, height);
+}
+
+function drawPortfolioWheelCanvasLabel(ctx, slice, cx, cy, radius, centerRadius, theme) {
+  const percent = slice.percent;
+  const middle = (slice.start + slice.end) / 2;
+  const labelRadius = percent < 5
+    ? radius * 0.76
+    : percent < 9
+      ? radius * 0.72
+      : percent < 16
+        ? radius * 0.68
+        : radius * 0.66;
+  const x = cx + Math.cos(middle) * Math.max(centerRadius * 1.35, labelRadius);
+  const y = cy + Math.sin(middle) * Math.max(centerRadius * 1.35, labelRadius);
+  const percentSize = Math.max(radius * (percent < 5 ? 0.082 : percent < 9 ? 0.096 : 0.132), 18);
+  const label = displayGroup(slice.row.name);
+  const percentLabel = formatPercent(percent);
+
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = theme.ink;
+  ctx.font = `900 ${percentSize}px ${SHARE_IMAGE_FONT}`;
+  ctx.shadowColor = theme.labelShadow;
+  ctx.shadowBlur = radius * 0.03;
+  ctx.shadowOffsetY = Math.max(2, radius * 0.012);
+  ctx.fillText(percentLabel, x, y - percentSize * 0.28);
+  ctx.restore();
+
+  ctx.save();
+  ctx.font = `900 ${Math.max(10, percentSize * 0.48)}px ${SHARE_IMAGE_FONT}`;
+  const pillWidth = Math.max(ctx.measureText(label).width + percentSize * 0.72, percentSize * 1.62);
+  const pillHeight = Math.max(18, percentSize * 0.68);
+  const pillX = x - pillWidth / 2;
+  const pillY = y + percentSize * 0.18;
+  ctx.shadowColor = theme.labelShadow;
+  ctx.shadowBlur = radius * 0.018;
+  ctx.fillStyle = colorWithAlpha(slice.color, 0.3);
+  drawLegacyRoundedPath(ctx, pillX, pillY, pillWidth, pillHeight, pillHeight * 0.28);
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.strokeStyle = colorWithAlpha(slice.color, 0.7);
+  ctx.lineWidth = Math.max(1, radius * 0.004);
+  ctx.stroke();
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x, pillY + pillHeight / 2 + 0.5);
+  ctx.restore();
+}
+
+function colorWithAlpha(color, alpha) {
+  const value = String(color || "").trim();
+  const hex = value.replace("#", "");
+  if (/^[0-9a-f]{3}$/i.test(hex)) {
+    const r = parseInt(hex[0] + hex[0], 16);
+    const g = parseInt(hex[1] + hex[1], 16);
+    const b = parseInt(hex[2] + hex[2], 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  if (/^[0-9a-f]{6}$/i.test(hex)) {
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  return value;
 }
 
 function loadShareLogoImage() {
@@ -3570,6 +4055,7 @@ function buildLegacyShareModel(data) {
     positions: data.positions.length,
     sections: Object.keys(data.sectionStats).length,
     allocation: buildPortfolioAllocation(data),
+    positionAllocation: buildPositionAssetAllocation(data.positions, data.nav.cash, data.baseCurrency || "USD", { respectSearch: false }),
     monthlyRows: data.monthlySummary.slice(-6),
     tickerRows: data.tickerPL.slice(0, 5)
   };
@@ -4347,6 +4833,11 @@ function maskAccount(account) {
   if (!account) return t("unknownAccount");
   const text = String(account);
   return text.length <= 5 ? text : `${text.slice(0, 1)}***${text.slice(-4)}`;
+}
+
+function accountLastFourSlug(account) {
+  const clean = String(account || "").replace(/[^a-z0-9]+/gi, "");
+  return clean ? clean.slice(-4) : "account";
 }
 
 function escapeHtml(value) {

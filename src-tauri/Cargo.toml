@@ -1,6 +1,6 @@
 [package]
 name = "ibkr-analytics-studio"
-version = "2.2.14"
+version = "2.2.15"
 description = "Local-first Interactive Brokers Activity Statement analytics app"
 authors = ["G061206"]
 edition = "2021"
@@ -14,6 +14,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["charset", "rustls-tls", "socks"] }
 roxmltree = "0.20"
 serde = { version = "1", features = ["derive"] }
