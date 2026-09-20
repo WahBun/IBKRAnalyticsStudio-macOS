@@ -25,3 +25,12 @@ for (const [year, dates] of Object.entries(marketClosures)) {
   for (const date of dates) assert.equal(due(`${year}-${date}T15:00:00Z`), null);
 }
 console.log('Refresh schedule passed: DST, holidays, weekends, catch-up, deduplication, early closes, calendar expiry.');
+
+const interrupted = { attempted: '2026-09-09', networkFailed: '2026-09-09' };
+assert.equal(automaticRefreshDay(new Date('2026-09-09T15:00:00Z'), interrupted), null);
+assert.equal(automaticRefreshDay(new Date('2026-09-09T15:00:00Z'), interrupted, { recoverNetwork: true }), '2026-09-09');
+assert.equal(automaticRefreshDay(new Date('2026-09-09T15:00:00Z'), { ...interrupted, recoveryAttempted: '2026-09-09' }, { recoverNetwork: true }), null);
+assert.equal(automaticRefreshDay(new Date('2026-09-09T15:00:00Z'), { ...interrupted, succeeded: '2026-09-09' }, { recoverNetwork: true }), null);
+assert.equal(automaticRefreshDay(new Date('2026-09-09T15:00:00Z'), { attempted: '2026-09-09' }, { recoverNetwork: true }), null);
+assert.equal(automaticRefreshDay(new Date('2026-09-07T15:00:00Z'), { attempted: '2026-09-07', networkFailed: '2026-09-07' }, { recoverNetwork: true }), null);
+console.log('Wake recovery passed: network-only, once per day, successful refresh and holiday protection.');

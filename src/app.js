@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.2.18";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.18";
-import { parseIbkrReport } from "./parser.js?v=2.2.18";
+import { decodeReportFile } from "./encoding.js?v=2.2.19";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.19";
+import { parseIbkrReport } from "./parser.js?v=2.2.19";
 import { automaticRefreshDay, easternDay } from "./refreshSchedule.js";
 
 const app = document.querySelector("#app");
@@ -379,10 +379,10 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.18";
-const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.18";
-const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.18";
-const PORTFOLIO_SHARE_BACKGROUND_SRC = "./assets/portfolio-share-background.png?v=2.2.18";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.19";
+const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.19";
+const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.19";
+const PORTFOLIO_SHARE_BACKGROUND_SRC = "./assets/portfolio-share-background.png?v=2.2.19";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#8b5cf6", "#f59e0b", "#ef4444", "#22c55e", "#06b6d4", "#60a5fa"];
@@ -393,7 +393,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
-const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.18";
+const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.19";
 const BENCHMARK_FETCH_TIMEOUT_MS = 5500;
 const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark-v2";
 const POSITION_AMOUNTS_HIDDEN_STORAGE_KEY = "ibkr-position-amounts-hidden";
@@ -403,7 +403,7 @@ const BENCHMARK_OPTIONS = {
   nq100: { id: "nq100", label: "NQ100", shortLabel: "NQ100", color: "#d79a19" },
   both: { id: "both", label: "SPX vs NQ100", shortLabel: "SPX vs NQ100" }
 };
-const APP_VERSION = "2.2.18";
+const APP_VERSION = "2.2.19";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 const DEFAULT_REPORT_TAB = "daily";
 
@@ -1006,7 +1006,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.2.18" alt="" />
+        <img src="./assets/app-logo.png?v=2.2.19" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -3054,20 +3054,42 @@ function recordFlexSchedule(field, date, key = flexScheduleKey()) {
 function startAutomaticFlexRefresh() {
   if (!canUseNativeFlex() || new URLSearchParams(location.search).get("sample") === "1") return;
   let lastAttempt = "";
+  let lastCheckAt = Date.now();
+  let settleUntil = lastCheckAt + 15_000;
+  let recoverNetwork = true;
   const check = () => {
+    const now = Date.now();
+    // A suspended WebView resumes its timer after wake; allow networking to settle.
+    if (now - lastCheckAt > 120_000) {
+      settleUntil = now + 15_000;
+      recoverNetwork = true;
+    }
+    lastCheckAt = now;
+    if (now < settleUntil) return;
     if (state.flexBusy || state.backgroundRefreshBusy || navigator.onLine === false) return;
     if (!state.flexToken.trim() || !state.flexQueryId.trim()) return;
     const key = flexScheduleKey();
-    const day = automaticRefreshDay(new Date(), readFlexSchedule());
-    if (!day || lastAttempt === `${key}:${day}`) return;
-    lastAttempt = `${key}:${day}`;
+    const history = readFlexSchedule();
+    const day = automaticRefreshDay(new Date(), history, { recoverNetwork });
+    if (!day) return;
+    const recovery = history.attempted === day;
+    const attemptKey = `${key}:${day}:${recovery ? "recovery" : "scheduled"}`;
+    if (lastAttempt === attemptKey) return;
+    lastAttempt = attemptKey;
+    recoverNetwork = false;
+    if (recovery) recordFlexSchedule("recoveryAttempted", day, key);
+    recordFlexSchedule("networkFailed", "", key);
     recordFlexSchedule("attempted", day, key);
     requestFlexReport({ background: Boolean(state.data) });
   };
-  check();
+  window.setTimeout(check, 15_000);
   window.setInterval(check, 30_000);
   window.addEventListener("focus", check);
-  window.addEventListener("online", check);
+  window.addEventListener("online", () => {
+    recoverNetwork = true;
+    settleUntil = Date.now() + 15_000;
+    window.setTimeout(check, 15_000);
+  });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) check();
   });
@@ -3216,6 +3238,9 @@ function requestFlexReport({ background = false } = {}) {
 
     if (!message.ok) {
       state.flexStatus = message.error || "IBKR Flex request failed.";
+      const networkFailure = !/10\d{2}|generating|generation in progress/i.test(state.flexStatus)
+        && /could not connect|transport|timeout|timed out|network|error sending request|connection/i.test(state.flexStatus);
+      recordFlexSchedule("networkFailed", networkFailure ? scheduleDay : "", scheduleKey);
       if (background && state.data) {
         state.cacheStatus = flexRefreshFailureStatus(state.flexStatus);
         updateFlexRefreshUi();
@@ -3352,6 +3377,7 @@ function refreshStatusHelpText() {
         `Statement period: ${statementPeriod || "unknown"}.`,
         loadedAt ? `Cached report loaded at: ${loadedAt}.` : "",
         "Flex is an Activity Statement source, not real-time portfolio data.",
+        "Auto-refresh runs after 07:00 New York time on trading days while the app is running. After wake or reopening, it waits briefly for the network and catches up once. A connection failure can retry once after network recovery; the app does not wake the Mac.",
         "If IBKR is still generating the report, wait until the latest daily statement is available and refresh again.",
         "If the day after the last trading day is a market holiday, IBKR may not update that trading day's statement during the holiday. Refresh normally once the next trading day starts.",
         "If refresh failed, the app keeps showing the last local cached report."
@@ -3360,6 +3386,7 @@ function refreshStatusHelpText() {
         `报表区间：${statementPeriod || "未知"}。`,
         loadedAt ? `本机缓存载入时间：${loadedAt}。` : "",
         "Flex 是 Activity Statement 报表源，不是实时持仓。",
+        "自动刷新在美股交易日美东 07:00 后执行。睡醒或重新打开 App 后，稍等网络恢复再补刷；连接失败可在恢复后补试一次，不会主动唤醒电脑。App 完全退出时，等下次打开再执行。",
         "如果 IBKR 仍在生成报表，等最新日结报表可用后再刷新。",
         "如果最后一个交易日的下一天是节假日，IBKR 可能不会在节假日期间更新该交易日的数据；通常要等下一个交易日开始后才能正常刷新。",
         "如果刷新失败，应用会继续显示最后一次本机缓存。"
@@ -3395,7 +3422,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.18");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.19");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {

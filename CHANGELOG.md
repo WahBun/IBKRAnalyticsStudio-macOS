@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.2.19
+
+Sleep-friendly refresh recovery.
+
+- Wait briefly for networking after app launch, reconnect, or a suspended timer resumes.
+- Allow one recovery attempt per trading day for a connection failure after wake, reconnect, or reopening; retain normal once-daily behavior for IBKR generation errors.
+- Preserve the trading-day calendar, manual refresh, cached reports, and successful-refresh deduplication.
+- Explain sleep and catch-up behavior in the refresh help. The app does not wake the Mac or run while fully quit.
+
 ## v2.2.18
 
 Automatic refresh, dual benchmarks, and smoother local review.

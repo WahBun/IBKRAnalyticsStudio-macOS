@@ -1,12 +1,12 @@
 {
   "name": "ibkr-analytics-studio",
-  "version": "2.2.18",
+  "version": "2.2.19",
   "private": true,
   "license": "MIT",
   "type": "module",
   "scripts": {
     "check": "node --check src/encoding.js && node --check src/parser.js && node --check src/reportLanguage.js && node --check src/refreshSchedule.js && node --check src/app.js",
-    "test": "node scripts/test-refresh-schedule.mjs && node scripts/test-benchmarks.mjs",
+    "test": "node scripts/test-refresh-schedule.mjs && node scripts/test-wake-refresh.mjs && node scripts/test-benchmarks.mjs",
     "serve": "node serve.mjs",
     "build:tauri-dist": "node scripts/build-tauri-dist.mjs",
     "tauri:dev": "tauri dev",

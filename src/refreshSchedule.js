@@ -16,11 +16,12 @@ export function easternDay(now = new Date()) {
   return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) };
 }
 
-export function automaticRefreshDay(now, { attempted = '', succeeded = '' } = {}) {
+export function automaticRefreshDay(now, { attempted = '', succeeded = '', networkFailed = '', recoveryAttempted = '' } = {}, { recoverNetwork = false } = {}) {
   const { date, hour } = easternDay(now);
   const holidays = marketClosures[Number(date.slice(0, 4))];
   // Unknown calendar years must not silently be treated as all weekdays open.
-  if (!holidays || hour < 7 || date === attempted || date === succeeded) return null;
+  if (!holidays || hour < 7 || date === succeeded) return null;
+  if (date === attempted && !(recoverNetwork && networkFailed === date && recoveryAttempted !== date)) return null;
   const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
   if (weekday === 0 || weekday === 6 || holidays.includes(date.slice(5))) return null;
   return date;
