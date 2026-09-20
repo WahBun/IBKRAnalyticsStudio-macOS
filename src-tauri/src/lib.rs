@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-const APP_VERSION: &str = "2.2.17";
+const APP_VERSION: &str = "2.2.18";
 const FLEX_BASE_URL: &str =
     "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService";
 const FRED_GRAPH_CSV_URL: &str = "https://fred.stlouisfed.org/graph/fredgraph.csv";
@@ -44,6 +44,7 @@ struct SaveFileResponse {
 
 #[derive(Clone, Copy)]
 struct BenchmarkSeries {
+    symbol: &'static str,
     fred_id: &'static str,
 }
 
@@ -230,17 +231,19 @@ async fn fetch_fred_benchmark_with_client(
         )));
     }
 
-    parse_fred_benchmark_csv(start, end, &body)
+    parse_fred_benchmark_csv(series.symbol, start, end, &body)
 }
 
 fn benchmark_series(symbol: &str) -> Result<BenchmarkSeries, String> {
     match symbol.trim().to_ascii_lowercase().as_str() {
-        "sp500" | "spx" | "s&p500" | "s&p 500" => Ok(BenchmarkSeries { fred_id: "SP500" }),
+        "sp500" | "spx" | "s&p500" | "s&p 500" => Ok(BenchmarkSeries { symbol: "sp500", fred_id: "SP500" }),
+        "nq100" => Ok(BenchmarkSeries { symbol: "nq100", fred_id: "NASDAQ100" }),
         _ => Err("Unsupported benchmark symbol.".to_string()),
     }
 }
 
 fn parse_fred_benchmark_csv(
+    symbol: &'static str,
     start: &str,
     end: &str,
     body: &str,
@@ -288,7 +291,7 @@ fn parse_fred_benchmark_csv(
     }
 
     Ok(BenchmarkFetchResponse {
-        symbol: "sp500",
+        symbol,
         dates: rows.iter().map(|(date, _)| date.clone()).collect(),
         closes: rows.iter().map(|(_, close)| *close).collect(),
         source: "fred",

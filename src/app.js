@@ -1,8 +1,19 @@
-import { decodeReportFile } from "./encoding.js?v=2.2.17";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.17";
-import { parseIbkrReport } from "./parser.js?v=2.2.17";
+import { decodeReportFile } from "./encoding.js?v=2.2.18";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.18";
+import { parseIbkrReport } from "./parser.js?v=2.2.18";
+import { automaticRefreshDay, easternDay } from "./refreshSchedule.js";
 
 const app = document.querySelector("#app");
+const displayFormatters = new Map();
+
+function cachedFormatter(kind, locale, options) {
+  const key = JSON.stringify([kind, locale, options]);
+  if (!displayFormatters.has(key)) {
+    if (displayFormatters.size >= 128) displayFormatters.clear();
+    displayFormatters.set(key, new Intl[kind](locale, options));
+  }
+  return displayFormatters.get(key);
+}
 
 const tabs = [
   { id: "overview", labelKey: "tabOverview", titleKey: "overviewTitle", icon: "dashboard" },
@@ -368,10 +379,10 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.17";
-const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.17";
-const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.17";
-const PORTFOLIO_SHARE_BACKGROUND_SRC = "./assets/portfolio-share-background.png?v=2.2.17";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.18";
+const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.18";
+const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.18";
+const PORTFOLIO_SHARE_BACKGROUND_SRC = "./assets/portfolio-share-background.png?v=2.2.18";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#8b5cf6", "#f59e0b", "#ef4444", "#22c55e", "#06b6d4", "#60a5fa"];
@@ -382,15 +393,17 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
-const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.17";
+const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.18";
 const BENCHMARK_FETCH_TIMEOUT_MS = 5500;
-const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark";
+const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark-v2";
 const POSITION_AMOUNTS_HIDDEN_STORAGE_KEY = "ibkr-position-amounts-hidden";
 const BENCHMARK_OPTIONS = {
   none: { id: "none", label: "No Benchmark", shortLabel: "None" },
-  sp500: { id: "sp500", label: "S&P 500", shortLabel: "S&P 500" }
+  sp500: { id: "sp500", label: "SPX", shortLabel: "SPX", color: "#8470ee" },
+  nq100: { id: "nq100", label: "NQ100", shortLabel: "NQ100", color: "#d79a19" },
+  both: { id: "both", label: "SPX vs NQ100", shortLabel: "SPX vs NQ100" }
 };
-const APP_VERSION = "2.2.17";
+const APP_VERSION = "2.2.18";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 const DEFAULT_REPORT_TAB = "daily";
 
@@ -422,7 +435,11 @@ function normalizeBenchmarkKey(value) {
 }
 
 function normalizeBenchmarkSelection(value) {
-  return normalizeBenchmarkKey(value) || "sp500";
+  return normalizeBenchmarkKey(value) || "both";
+}
+
+function selectedBenchmarkKeys(selection) {
+  return selection === "both" ? ["sp500", "nq100"] : selection === "none" ? [] : [selection];
 }
 
 const state = {
@@ -445,7 +462,6 @@ const state = {
   updateInfo: null,
   updateError: "",
   backgroundRefreshBusy: false,
-  backgroundRefreshStarted: false,
   reportFingerprint: "",
   autoSampleStarted: false,
   flexGuideOpen: false,
@@ -459,14 +475,14 @@ const state = {
   positionAmountsHidden: localStorage.getItem(POSITION_AMOUNTS_HIDDEN_STORAGE_KEY) === "1",
   language: localStorage.getItem("ibkr-analytics-language") === "en" ? "en" : "zh",
   theme: localStorage.getItem("ibkr-analytics-theme") === "dark" ? "dark" : "light",
-  benchmarkSelection: normalizeBenchmarkSelection(localStorage.getItem(BENCHMARK_STORAGE_KEY) || "sp500"),
+  benchmarkSelection: normalizeBenchmarkSelection(localStorage.getItem(BENCHMARK_STORAGE_KEY) || "both"),
   benchmarkData: null
 };
 
 applyTheme();
 applyLanguage();
 render();
-hydrateCachedFlexReport();
+hydrateCachedFlexReport().finally(startAutomaticFlexRefresh);
 maybeAutoCheckForUpdates();
 
 function render() {
@@ -783,7 +799,7 @@ function renderDashboard() {
         <header class="app-bar">
           <div class="app-bar-title">
             <span>${t(active.titleKey)}</span>
-            ${renderFlexSyncStatus()}
+            <span id="flexSyncStatus" style="display: contents">${renderFlexSyncStatus()}</span>
           </div>
           <div class="app-bar-actions">
             ${renderDashboardFlexRefreshButton("dashboardFlexRefreshButton", false)}
@@ -892,6 +908,26 @@ function compactFlexSyncStatus() {
   return status;
 }
 
+function updateFlexRefreshUi() {
+  const status = document.querySelector("#flexSyncStatus");
+  if (!status) {
+    render();
+    return;
+  }
+  status.innerHTML = renderFlexSyncStatus();
+  localizeRenderedUi(status);
+  for (const id of ["dashboardFlexRefreshButton", "mobileFlexRefreshButton"]) {
+    const button = document.getElementById(id);
+    if (!button) continue;
+    const label = state.backgroundRefreshBusy ? t("refreshingReport") : t("refreshReport");
+    button.disabled = state.backgroundRefreshBusy;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    const text = button.querySelector("span");
+    if (text) text.textContent = state.backgroundRefreshBusy ? t("refreshingReportShort") : t("refreshReportShort");
+  }
+}
+
 function renderDashboardFlexRefreshButton(id, iconOnly = false) {
   if (!canRefreshFlexFromDashboard()) return "";
   const label = state.backgroundRefreshBusy ? t("refreshingReport") : t("refreshReport");
@@ -970,7 +1006,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.2.17" alt="" />
+        <img src="./assets/app-logo.png?v=2.2.18" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1731,6 +1767,7 @@ function buildBenchmarkRows(benchmark, portfolioRows) {
   if (!baseClose) return null;
 
   const alignedRows = portfolioRows.map((row, index) => {
+    if (row.date > benchmark.dates.at(-1)) return null;
     const close = findClosestClose(benchmark, row.date);
     if (close === null) return null;
     const returnRate = ((close / baseClose) - 1) * 100;
@@ -1758,24 +1795,24 @@ function findClosestClose(benchmark, targetDate) {
   return best;
 }
 
-function buildBenchmarkPath(benchmarkRows, width, paddingLeft, paddingRight, paddingTop, paddingBottom, minValue, maxValue, zeroY) {
+function buildBenchmarkPath(benchmarkRows, width, paddingLeft, paddingRight, paddingTop, paddingBottom, minValue, maxValue, zeroY, count, color) {
   if (!benchmarkRows || benchmarkRows.length < 2) return "";
 
   const height = 250;
   const chartRight = width - paddingRight;
   const chartHeight = height - paddingTop - paddingBottom;
-  const xFor = (index) => paddingLeft + (index / Math.max(1, benchmarkRows.length - 1)) * (chartRight - paddingLeft);
+  const xFor = (index) => paddingLeft + (index / Math.max(1, count - 1)) * (chartRight - paddingLeft);
   const yFor = (value) => paddingTop + ((maxValue - value) / (maxValue - minValue)) * chartHeight;
   const points = benchmarkRows.map((row, index) => ({
     ...row,
-    x: xFor(index),
+    x: xFor(row.portfolioIndex),
     y: yFor(row.returnRate)
   }));
   const signedPaths = buildSignedReturnPaths(points, zeroY);
 
   return [
-    ...signedPaths.positiveLines.map((path) => `<path class="return-benchmark return-benchmark-positive" d="${escapeAttribute(path)}"></path>`),
-    ...signedPaths.negativeLines.map((path) => `<path class="return-benchmark return-benchmark-negative" d="${escapeAttribute(path)}"></path>`)
+    ...signedPaths.positiveLines.map((path) => `<path class="return-benchmark" style="stroke:${color}" d="${escapeAttribute(path)}"></path>`),
+    ...signedPaths.negativeLines.map((path) => `<path class="return-benchmark" style="stroke:${color}" d="${escapeAttribute(path)}"></path>`)
   ].join("");
 }
 
@@ -1786,9 +1823,9 @@ function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(
     return renderReturnCurveUnavailable(status.message);
   }
 
-  const benchmarkOption = BENCHMARK_OPTIONS[benchmarkSelection] || BENCHMARK_OPTIONS.sp500;
-  const shouldShowBenchmark = benchmarkOption.id !== "none";
-  const benchmarkRows = shouldShowBenchmark ? buildBenchmarkRows(benchmark, rows) : null;
+  const series = selectedBenchmarkKeys(benchmarkSelection).map(key => ({
+    ...BENCHMARK_OPTIONS[key], rows: buildBenchmarkRows(benchmark?.[key], rows)
+  }));
 
   const width = 680;
   const height = 250;
@@ -1799,7 +1836,7 @@ function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(
   const chartHeight = height - paddingTop - paddingBottom;
 
   const portfolioValues = rows.map((row) => row.returnRate);
-  const benchmarkValues = benchmarkRows ? benchmarkRows.map((row) => row.returnRate) : [];
+  const benchmarkValues = series.flatMap(item => (item.rows || []).map(row => row.returnRate));
   const allValues = [...portfolioValues, ...benchmarkValues];
   const rawMinValue = Math.min(0, ...allValues);
   const rawMaxValue = Math.max(0, ...allValues);
@@ -1826,29 +1863,21 @@ function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(
     const y = yFor(value);
     return Math.abs(y - paddingTop) > 0.5 && Math.abs(y - (height - paddingBottom)) > 0.5;
   });
-  const benchmarkHoverPoints = benchmarkRows
-    ? benchmarkRows.map((row) => ({
-      ...row,
-      x: xFor(row.portfolioIndex, rows.length),
-      y: yFor(row.returnRate)
-    }))
-    : [];
-  const benchmarkByIndex = new Map(benchmarkHoverPoints.map((row) => [row.portfolioIndex, row]));
+  const benchmarkMaps = series.map(item => new Map((item.rows || []).map(row => [row.portfolioIndex, row])));
   const hoverPoints = points.map((point, index) => {
-    const benchmarkPoint = benchmarkByIndex.get(index);
     return {
       date: point.date,
       portfolioReturn: point.returnRate,
       portfolioX: point.x,
       portfolioY: point.y,
-      benchmarkReturn: benchmarkPoint ? benchmarkPoint.returnRate : null,
-      benchmarkY: benchmarkPoint ? benchmarkPoint.y : null,
-      benchmarkLabel: benchmarkPoint ? benchmarkOption.shortLabel : ""
+      benchmarks: series.flatMap((item, i) => {
+        const row = benchmarkMaps[i].get(index);
+        return row ? [{ id: item.id, label: item.shortLabel, color: item.color, returnRate: row.returnRate, y: yFor(row.returnRate) }] : [];
+      })
     };
   });
 
-  const benchmarkPath = buildBenchmarkPath(benchmarkRows, width, paddingLeft, paddingRight, paddingTop, paddingBottom, minValue, maxValue, zeroY);
-  const benchmarkLastPoint = benchmarkRows?.at(-1);
+  const benchmarkPath = series.map(item => buildBenchmarkPath(item.rows, width, paddingLeft, paddingRight, paddingTop, paddingBottom, minValue, maxValue, zeroY, rows.length, item.color)).join("");
 
   return `
     <div class="return-curve">
@@ -1897,7 +1926,7 @@ function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(
           <g class="return-hover-layer" aria-hidden="true">
             <line class="return-hover-crosshair" x1="0" y1="${paddingTop}" x2="0" y2="${height - paddingBottom}"></line>
             <circle class="return-hover-point return-hover-portfolio" cx="0" cy="0" r="4.5"></circle>
-            <circle class="return-hover-point return-hover-benchmark" cx="0" cy="0" r="4.5"></circle>
+            ${series.map(item => `<circle class="return-hover-point return-hover-benchmark" data-benchmark="${item.id}" style="stroke:${item.color};fill:${item.color}" cx="0" cy="0" r="4.5"></circle>`).join("")}
           </g>
           <rect class="return-hover-capture" x="${paddingLeft}" y="${paddingTop}" width="${chartRight - paddingLeft}" height="${chartHeight}"></rect>
           <text class="return-axis-label" x="${paddingLeft}" y="${height - 12}">${escapeHtml(formatDate(firstPoint.date))}</text>
@@ -1905,13 +1934,10 @@ function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(
         </svg>
         <div class="return-hover-tooltip" role="tooltip"></div>
       </div>
-      ${shouldShowBenchmark && benchmarkLastPoint ? `
         <div class="return-curve-legend">
           <span class="legend-item legend-portfolio"><span class="legend-dot"></span>Portfolio</span>
-          <span class="legend-item legend-benchmark"><span class="legend-dot"></span>${escapeHtml(benchmarkOption.shortLabel)}</span>
-          <span class="legend-item legend-benchmark-value">${formatSignedPercent(benchmarkLastPoint.returnRate)}</span>
+          ${series.map(item => `<span class="legend-item" style="color:${item.color}"><span class="legend-dot" style="background:${item.color}"></span>${item.shortLabel} ${item.rows ? formatSignedPercent(item.rows.at(-1).returnRate) : (state.language === "en" ? "Unavailable" : "暂无数据")}</span>`).join("")}
         </div>
-      ` : ""}
       <p class="return-curve-note">按 IBKR 每日 TWR 累乘计算，已剔除入金、出金等外部现金流影响。</p>
     </div>
   `;
@@ -2578,22 +2604,15 @@ function bindReturnCurveHover() {
   const tooltip = chart.querySelector(".return-hover-tooltip");
   const crosshair = chart.querySelector(".return-hover-crosshair");
   const portfolioMarker = chart.querySelector(".return-hover-portfolio");
-  const benchmarkMarker = chart.querySelector(".return-hover-benchmark");
+  const benchmarkMarkers = chart.querySelectorAll(".return-hover-benchmark");
   const chartWidth = Number(chart.dataset.chartWidth) || 680;
   const chartHeight = Number(chart.dataset.chartHeight) || 250;
   const chartTop = Number(chart.dataset.chartTop) || 24;
   const chartBottom = Number(chart.dataset.chartBottom) || 202;
-  if (!svg || !tooltip || !crosshair || !portfolioMarker || !benchmarkMarker) return;
+  if (!svg || !tooltip || !crosshair || !portfolioMarker) return;
 
   let activeIndex = points.length - 1;
 
-  const hasBenchmarkValue = (point) => (
-    point.benchmarkReturn !== null &&
-    point.benchmarkY !== null &&
-    Number.isFinite(Number(point.benchmarkReturn)) &&
-    Number.isFinite(Number(point.benchmarkY)) &&
-    point.benchmarkLabel
-  );
   const lerp = (from, to, ratio) => from + (to - from) * ratio;
 
   const pointAtX = (viewX) => {
@@ -2615,9 +2634,6 @@ function bindReturnCurveHover() {
     const ratio = (x - left.portfolioX) / span;
     const nearest = ratio < 0.5 ? left : right;
     const nearestIndex = ratio < 0.5 ? rightIndex - 1 : rightIndex;
-    const benchmarkLeftOk = hasBenchmarkValue(left);
-    const benchmarkRightOk = hasBenchmarkValue(right);
-    const benchmarkFallback = hasBenchmarkValue(nearest) ? nearest : null;
 
     return {
       point: {
@@ -2625,15 +2641,11 @@ function bindReturnCurveHover() {
         portfolioX: x,
         portfolioY: lerp(Number(left.portfolioY), Number(right.portfolioY), ratio),
         portfolioReturn: lerp(Number(left.portfolioReturn), Number(right.portfolioReturn), ratio),
-        benchmarkReturn: benchmarkLeftOk && benchmarkRightOk
-          ? lerp(Number(left.benchmarkReturn), Number(right.benchmarkReturn), ratio)
-          : benchmarkFallback?.benchmarkReturn ?? null,
-        benchmarkY: benchmarkLeftOk && benchmarkRightOk
-          ? lerp(Number(left.benchmarkY), Number(right.benchmarkY), ratio)
-          : benchmarkFallback?.benchmarkY ?? null,
-        benchmarkLabel: benchmarkLeftOk && benchmarkRightOk
-          ? left.benchmarkLabel
-          : benchmarkFallback?.benchmarkLabel ?? ""
+        benchmarks: (nearest.benchmarks || []).map(item => {
+          const a = left.benchmarks.find(row => row.id === item.id);
+          const b = right.benchmarks.find(row => row.id === item.id);
+          return a && b ? { ...item, returnRate: lerp(a.returnRate, b.returnRate, ratio), y: lerp(a.y, b.y, ratio) } : item;
+        })
       },
       index: nearestIndex
     };
@@ -2652,12 +2664,10 @@ function bindReturnCurveHover() {
   };
 
   const renderTooltip = (point) => {
-    const benchmarkValue = Number(point.benchmarkReturn);
-    const hasBenchmark = point.benchmarkReturn !== null && Number.isFinite(benchmarkValue) && point.benchmarkLabel;
     tooltip.innerHTML = `
       <strong>${escapeHtml(formatDate(point.date))}</strong>
       <span><b>Portfolio TWR</b><em class="${valueClass(point.portfolioReturn)}">${escapeHtml(formatSignedPercent(point.portfolioReturn))}</em></span>
-      ${hasBenchmark ? `<span><b>${escapeHtml(point.benchmarkLabel)}</b><em class="${valueClass(benchmarkValue)}">${escapeHtml(formatSignedPercent(benchmarkValue))}</em></span>` : ""}
+      ${(point.benchmarks || []).map(item => `<span><b style="color:${item.color}">${item.label}</b><em>${escapeHtml(formatSignedPercent(item.returnRate))}</em></span>`).join("")}
     `;
   };
 
@@ -2665,10 +2675,9 @@ function bindReturnCurveHover() {
     const chartRect = chart.getBoundingClientRect();
     const svgRect = svg.getBoundingClientRect();
     const left = svgRect.left - chartRect.left + (point.portfolioX / chartWidth) * svgRect.width;
-    const benchmarkY = Number(point.benchmarkY);
     const anchorY = Math.min(
       Number(point.portfolioY),
-      Number.isFinite(benchmarkY) ? benchmarkY : Number(point.portfolioY)
+      ...(point.benchmarks || []).map(item => item.y)
     );
     const top = svgRect.top - chartRect.top + (anchorY / chartHeight) * svgRect.height;
     const tooltipWidth = tooltip.offsetWidth || 190;
@@ -2687,8 +2696,10 @@ function bindReturnCurveHover() {
     crosshair.setAttribute("y1", String(chartTop));
     crosshair.setAttribute("y2", String(chartBottom));
     setMarker(portfolioMarker, point.portfolioX, point.portfolioY);
-    const benchmarkY = Number(point.benchmarkY);
-    setMarker(benchmarkMarker, point.portfolioX, benchmarkY, point.benchmarkY !== null && Number.isFinite(benchmarkY));
+    benchmarkMarkers.forEach(marker => {
+      const item = (point.benchmarks || []).find(row => row.id === marker.dataset.benchmark);
+      setMarker(marker, point.portfolioX, item?.y, Boolean(item));
+    });
     renderTooltip(point);
     positionTooltip(point);
     tooltip.classList.add("is-visible");
@@ -2812,32 +2823,34 @@ function getTauriInvoke() {
 }
 
 async function fetchBenchmarkJson(url, selection, startDate, endDate) {
-  try {
-    const response = await fetchWithTimeout(url, BENCHMARK_FETCH_TIMEOUT_MS);
-    if (response.ok) {
-      const json = await response.json();
-      if (isBenchmarkResponseForSelection(json, selection)) return json;
-    }
-  } catch {
-    // The packaged macOS app may be blocked by Worker CORS; fall back to Tauri.
-  }
-
+  let best = await fetchLocalSp500Benchmark(selection);
   const invoke = getTauriInvoke();
-  if (typeof invoke !== "function") return fetchLocalSp500Benchmark(selection);
-
-  try {
-    const raw = await withTimeout(invoke("benchmark_fetch", {
-      symbol: selection,
-      start: startDate,
-      end: endDate
-    }), BENCHMARK_FETCH_TIMEOUT_MS);
-
-    const json = typeof raw === "string" ? JSON.parse(raw || "{}") : raw;
-    if (isBenchmarkResponseForSelection(json, selection)) return json;
-    return fetchLocalSp500Benchmark(selection);
-  } catch {
-    return fetchLocalSp500Benchmark(selection);
+  if (typeof invoke === "function") {
+    try {
+      const raw = await withTimeout(invoke("benchmark_fetch", {
+        symbol: selection, start: startDate, end: endDate
+      }), 60000);
+      const json = typeof raw === "string" ? JSON.parse(raw || "{}") : raw;
+      best = mergeBenchmarkHistory(best, json, selection);
+      if (best?.dates[0] <= startDate && best.dates.at(-1) >= endDate) {
+        saveBenchmarkHistory(best, selection);
+        return best;
+      }
+    } catch {
+      // Preserve historical data when the upstream request is unavailable.
+    }
   }
+  if (selection === "sp500") {
+    try {
+      const response = await fetchWithTimeout(url, BENCHMARK_FETCH_TIMEOUT_MS);
+      if (response.ok) {
+        // The legacy proxy may lag FRED: it can fill gaps, never overwrite it.
+        best = mergeBenchmarkHistory(await response.json(), best, selection);
+      }
+    } catch {}
+  }
+  saveBenchmarkHistory(best, selection);
+  return best;
 }
 
 function fetchWithTimeout(url, timeoutMs) {
@@ -2846,31 +2859,60 @@ function fetchWithTimeout(url, timeoutMs) {
   return fetch(url, { signal: controller.signal }).finally(() => window.clearTimeout(timer));
 }
 
-function withTimeout(promise, timeoutMs) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      window.setTimeout(() => reject(new Error("Benchmark request timed out.")), timeoutMs);
-    })
-  ]);
+async function withTimeout(promise, timeoutMs) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error("Benchmark request timed out.")), timeoutMs);
+      })
+    ]);
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 function isBenchmarkResponseForSelection(json, selection) {
-  if (!json || !json.dates || !json.closes || json.dates.length < 2) return false;
+  if (!json || !Array.isArray(json.dates) || !Array.isArray(json.closes) || json.dates.length < 2 || json.dates.length !== json.closes.length) return false;
   const responseSymbol = normalizeBenchmarkKey(json.symbol);
-  return responseSymbol ? responseSymbol === selection : selection === "sp500";
+  if (!(responseSymbol ? responseSymbol === selection : selection === "sp500")) return false;
+  return json.dates.every((date, i) => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)
+    && Number.isFinite(json.closes[i]) && json.closes[i] > 0
+    && (i === 0 || date > json.dates[i - 1]));
+}
+
+function mergeBenchmarkHistory(previous, incoming, selection) {
+  const rows = new Map();
+  for (const candidate of [previous, incoming]) {
+    if (!isBenchmarkResponseForSelection(candidate, selection)) continue;
+    candidate.dates.forEach((date, i) => rows.set(date, candidate.closes[i]));
+  }
+  if (rows.size < 2) return null;
+  const dates = [...rows.keys()].sort();
+  return { symbol: selection, dates, closes: dates.map(date => rows.get(date)) };
+}
+
+function saveBenchmarkHistory(json, selection) {
+  if (!isBenchmarkResponseForSelection(json, selection)) return;
+  try {
+    localStorage.setItem(`ibkr-benchmark-history:${selection}`, JSON.stringify(json));
+  } catch {}
 }
 
 async function fetchLocalSp500Benchmark(selection) {
-  if (selection !== "sp500") return null;
-
+  if (!["sp500", "nq100"].includes(selection)) return null;
+  let saved = null;
   try {
-    const response = await fetch(LOCAL_SP500_BENCHMARK_URL);
-    if (!response.ok) return null;
+    saved = JSON.parse(localStorage.getItem(`ibkr-benchmark-history:${selection}`) || "null");
+  } catch {}
+  try {
+    const response = await fetch(selection === "sp500" ? LOCAL_SP500_BENCHMARK_URL : "./assets/benchmarks/nq100.json");
+    if (!response.ok) return mergeBenchmarkHistory(null, saved, selection);
     const json = await response.json();
-    return isBenchmarkResponseForSelection(json, "sp500") ? json : null;
+    return mergeBenchmarkHistory(json, saved, selection);
   } catch {
-    return null;
+    return mergeBenchmarkHistory(null, saved, selection);
   }
 }
 
@@ -2987,13 +3029,48 @@ async function hydrateCachedFlexReport() {
   }
 }
 
-function refreshCachedFlexReportInBackground() {
-  if (state.backgroundRefreshStarted) return;
-  if (!canUseNativeFlex()) return;
-  if (!state.flexToken.trim() || !state.flexQueryId.trim()) return;
+function flexScheduleKey(queryId = normalizeFlexQueryId(state.flexQueryId)) {
+  return `ibkr-flex-schedule-v1:${queryId}`;
+}
 
-  state.backgroundRefreshStarted = true;
-  window.setTimeout(() => requestFlexReport({ background: true }), 300);
+function readFlexSchedule() {
+  try {
+    const value = JSON.parse(localStorage.getItem(flexScheduleKey()) || "{}");
+    return value && typeof value === "object" ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function recordFlexSchedule(field, date, key = flexScheduleKey()) {
+  try {
+    const previous = JSON.parse(localStorage.getItem(key) || "{}") || {};
+    localStorage.setItem(key, JSON.stringify({ ...previous, [field]: date }));
+  } catch {
+    // Keep the current session protected even if browser storage is unavailable.
+  }
+}
+
+function startAutomaticFlexRefresh() {
+  if (!canUseNativeFlex() || new URLSearchParams(location.search).get("sample") === "1") return;
+  let lastAttempt = "";
+  const check = () => {
+    if (state.flexBusy || state.backgroundRefreshBusy || navigator.onLine === false) return;
+    if (!state.flexToken.trim() || !state.flexQueryId.trim()) return;
+    const key = flexScheduleKey();
+    const day = automaticRefreshDay(new Date(), readFlexSchedule());
+    if (!day || lastAttempt === `${key}:${day}`) return;
+    lastAttempt = `${key}:${day}`;
+    recordFlexSchedule("attempted", day, key);
+    requestFlexReport({ background: Boolean(state.data) });
+  };
+  check();
+  window.setInterval(check, 30_000);
+  window.addEventListener("focus", check);
+  window.addEventListener("online", check);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) check();
+  });
 }
 
 async function openFlexCacheDb() {
@@ -3119,10 +3196,12 @@ function requestFlexReport({ background = false } = {}) {
   }
 
   const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const scheduleKey = flexScheduleKey();
+  const scheduleDay = easternDay().date;
   if (background) {
     state.backgroundRefreshBusy = true;
     state.cacheStatus = "报表刷新中";
-    render();
+    updateFlexRefreshUi();
   } else {
     state.flexBusy = true;
     state.flexStatus = "Requesting IBKR Flex report...";
@@ -3139,7 +3218,7 @@ function requestFlexReport({ background = false } = {}) {
       state.flexStatus = message.error || "IBKR Flex request failed.";
       if (background && state.data) {
         state.cacheStatus = flexRefreshFailureStatus(state.flexStatus);
-        renderDashboard();
+        updateFlexRefreshUi();
       } else {
         renderUpload();
       }
@@ -3151,7 +3230,7 @@ function requestFlexReport({ background = false } = {}) {
       state.flexStatus = "IBKR returned an empty Flex report.";
       if (background && state.data) {
         state.cacheStatus = flexRefreshFailureStatus(state.flexStatus);
-        renderDashboard();
+        updateFlexRefreshUi();
       } else {
         renderUpload();
       }
@@ -3162,7 +3241,7 @@ function requestFlexReport({ background = false } = {}) {
       state.flexStatus = "IBKR returned XML. Configure the Activity Flex Query output as Text/CSV-compatible, or add an XML adapter before parsing.";
       if (background && state.data) {
         state.cacheStatus = flexRefreshFailureStatus(state.flexStatus);
-        renderDashboard();
+        updateFlexRefreshUi();
       } else {
         renderUpload();
       }
@@ -3174,9 +3253,12 @@ function requestFlexReport({ background = false } = {}) {
     const reportFingerprint = fingerprintReportText(reportText);
 
     if (state.data && state.reportFingerprint === reportFingerprint) {
+      recordFlexSchedule("succeeded", scheduleDay, scheduleKey);
       state.flexStatus = "IBKR Flex report is already current.";
       state.cacheLoadedAt = fetchedAt;
       state.cacheStatus = background ? `报表已是最新 ${formatDateTime(fetchedAt)}` : `已是最新 ${formatDateTime(fetchedAt)}`;
+      updateFlexRefreshUi();
+      fetchBenchmark(state.data);
       await writeCachedFlexReport({
         text: reportText,
         sourceName,
@@ -3185,7 +3267,6 @@ function requestFlexReport({ background = false } = {}) {
         referenceCode: message.referenceCode || "",
         fingerprint: reportFingerprint
       });
-      renderDashboard();
       return;
     }
 
@@ -3198,6 +3279,7 @@ function requestFlexReport({ background = false } = {}) {
     });
 
     if (parsed) {
+      recordFlexSchedule("succeeded", scheduleDay, scheduleKey);
       state.cacheLoadedAt = fetchedAt;
       await writeCachedFlexReport({
         text: reportText,
@@ -3313,7 +3395,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.17");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.18");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -3413,22 +3495,18 @@ async function fetchBenchmark(parsed = state.data) {
   const startDate = flowRows[0].date;
   const endDate = flowRows[flowRows.length - 1].date;
 
-  try {
-    const localJson = await fetchLocalSp500Benchmark(selection);
-    const hasLocalBenchmark = applyBenchmarkData(localJson, selection, parsed, requestId, startDate, endDate);
-
-    const url = `${BENCHMARK_PROXY_URL}?symbol=${encodeURIComponent(selection)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
-    const json = await fetchBenchmarkJson(url, selection, startDate, endDate);
-    if (!json && hasLocalBenchmark) return;
-    applyBenchmarkData(json, selection, parsed, requestId, startDate, endDate);
-  } catch {
-    // benchmark fetch is optional; silently skip on failure
-  }
+  await Promise.allSettled(selectedBenchmarkKeys(selection).map(async symbol => {
+    const localJson = await fetchLocalSp500Benchmark(symbol);
+    applyBenchmarkData(localJson, symbol, parsed, requestId, startDate, endDate);
+    const url = `${BENCHMARK_PROXY_URL}?symbol=${encodeURIComponent(symbol)}&start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`;
+    const json = await fetchBenchmarkJson(url, symbol, startDate, endDate);
+    applyBenchmarkData(json, symbol, parsed, requestId, startDate, endDate);
+  }));
 }
 
 function applyBenchmarkData(json, selection, parsed, requestId, startDate, endDate) {
   if (!json) return false;
-  if (requestId !== benchmarkRequestId || state.data !== parsed || state.benchmarkSelection !== selection) return false;
+  if (requestId !== benchmarkRequestId || state.data !== parsed || !selectedBenchmarkKeys(state.benchmarkSelection).includes(selection)) return false;
   if (!isBenchmarkResponseForSelection(json, selection)) return false;
 
   const navHistory = parsed.navHistory || [];
@@ -3436,11 +3514,10 @@ function applyBenchmarkData(json, selection, parsed, requestId, startDate, endDa
   if (startDate !== flowRows[0]?.date || endDate !== flowRows.at(-1)?.date) return false;
 
   state.benchmarkData = {
-    symbol: selection,
-    dates: json.dates,
-    closes: json.closes
+    ...state.benchmarkData,
+    [selection]: mergeBenchmarkHistory(state.benchmarkData?.[selection], json, selection)
   };
-  renderDashboard();
+  if (state.activeTab === "overview" && !state.shareOpen) renderDashboard();
   return true;
 }
 
@@ -4044,7 +4121,7 @@ function buildLegacyShareModel(data) {
     account: data.accountInfo.account ? maskAccount(data.accountInfo.account) : "未识别账户",
     period: data.accountInfo.period || renderDateRange(data),
     currency: data.baseCurrency || "USD",
-    generatedDate: new Intl.DateTimeFormat(numberLocale(), {
+    generatedDate: cachedFormatter("DateTimeFormat", numberLocale(), {
       year: "numeric",
       month: "2-digit",
       day: "2-digit"
@@ -4717,7 +4794,7 @@ function safePercent(value, denominator) {
 function formatMoney(value, currency = "USD") {
   const amount = Number.isFinite(value) ? value : 0;
   try {
-    return new Intl.NumberFormat(numberLocale(), {
+    return cachedFormatter("NumberFormat", numberLocale(), {
       style: "currency",
       currency,
       minimumFractionDigits: 2,
@@ -4733,14 +4810,14 @@ function formatCompactMoney(value, currency = "USD") {
   if (Math.abs(amount) < 100000) return formatMoney(amount, currency);
 
   try {
-    return new Intl.NumberFormat(numberLocale(), {
+    return cachedFormatter("NumberFormat", numberLocale(), {
       style: "currency",
       currency,
       notation: "compact",
       maximumFractionDigits: 2
     }).format(amount);
   } catch (error) {
-    return `${currency} ${new Intl.NumberFormat(numberLocale(), {
+    return `${currency} ${cachedFormatter("NumberFormat", numberLocale(), {
       notation: "compact",
       maximumFractionDigits: 2
     }).format(amount)}`;
@@ -4749,7 +4826,7 @@ function formatCompactMoney(value, currency = "USD") {
 
 function formatNumber(value, digits = 0) {
   const amount = Number.isFinite(value) ? value : 0;
-  return new Intl.NumberFormat(numberLocale(), {
+  return cachedFormatter("NumberFormat", numberLocale(), {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits
   }).format(amount);
@@ -4775,7 +4852,7 @@ function formatCompactPercent(value) {
   const amount = Number.isFinite(value) ? value : 0;
   if (Math.abs(amount) < 10000) return formatPercent(amount);
 
-  const formatted = new Intl.NumberFormat(numberLocale(), {
+  const formatted = cachedFormatter("NumberFormat", numberLocale(), {
     notation: "compact",
     maximumFractionDigits: 2
   }).format(amount);
@@ -4786,7 +4863,7 @@ function formatDate(value) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat(numberLocale(), {
+  return cachedFormatter("DateTimeFormat", numberLocale(), {
     year: "numeric",
     month: "2-digit",
     day: "2-digit"
@@ -4797,7 +4874,7 @@ function formatDateTime(value) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat(numberLocale(), {
+  return cachedFormatter("DateTimeFormat", numberLocale(), {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -4810,7 +4887,7 @@ function formatMonthLabel(month) {
   if (!month) return "-";
   const [year, monthNumber] = String(month).split("-").map(Number);
   if (!year || !monthNumber) return month;
-  return new Intl.DateTimeFormat(numberLocale(), {
+  return cachedFormatter("DateTimeFormat", numberLocale(), {
     year: "numeric",
     month: "long"
   }).format(new Date(year, monthNumber - 1, 1));

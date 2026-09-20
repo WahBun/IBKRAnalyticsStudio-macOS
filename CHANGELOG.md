@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.2.18
+
+Automatic refresh, dual benchmarks, and smoother local review.
+
+- Automatically refresh once after 07:00 America/New_York on trading days, including catch-up on launch or wake; skip weekends and published NYSE holidays through 2028.
+- Remember daily automatic attempts and successful manual refreshes to avoid duplicate requests.
+- Add SPX, NQ100, and default SPX vs NQ100 benchmark modes with aligned curves and multi-series tooltips.
+- Prefer FRED benchmark history, persist validated data locally, and retain history during network failures.
+- Update benchmark history even when the IBKR report is unchanged.
+- Reduce repeated formatting work and unnecessary dashboard redraws during refresh.
+- Keep manual refresh available; automatic failures do not trigger repeated daily attempts. Future calendar years and exceptional closures require a calendar update.
+
 ## v2.2.17
 
 Daily default and refresh note polish.
