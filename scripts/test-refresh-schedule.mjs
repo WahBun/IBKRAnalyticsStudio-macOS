@@ -2,9 +2,15 @@ import assert from 'node:assert/strict';
 import { automaticRefreshDay, easternDay, marketClosures } from '../src/refreshSchedule.js';
 
 const due = (time, history) => automaticRefreshDay(new Date(time), history);
-assert.equal(due('2026-09-09T10:59:59Z'), null);
+assert.equal(due('2026-09-09T08:04:59Z'), null);
+assert.equal(due('2026-09-09T08:05:00Z'), '2026-09-09');
+assert.equal(due('2026-09-09T10:59:59Z', { earlyAttempted: '2026-09-09' }), null);
 assert.equal(due('2026-09-09T11:00:00Z'), '2026-09-09');
-assert.equal(due('2026-12-09T11:59:59Z'), null);
+assert.equal(due('2026-12-09T09:04:59Z'), null);
+assert.equal(due('2026-12-09T09:05:00Z'), '2026-12-09');
+assert.equal(due('2026-12-09T11:59:59Z', { earlyAttempted: '2026-12-09' }), null);
+assert.equal(due('2026-09-09T11:00:00Z', { earlyAttempted: '2026-09-09' }), '2026-09-09');
+assert.equal(due('2026-09-09T11:00:00Z', { earlyAttempted: '2026-09-09', succeeded: '2026-09-09' }), null);
 assert.equal(due('2026-12-09T12:00:00Z'), '2026-12-09');
 assert.equal(due('2026-09-07T15:00:00Z'), null);
 assert.equal(due('2026-09-08T11:00:00Z'), '2026-09-08');

@@ -1,7 +1,7 @@
 import { decodeReportFile } from "./encoding.js?v=2.2.19";
 import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.19";
 import { parseIbkrReport } from "./parser.js?v=2.2.19";
-import { automaticRefreshDay, easternDay } from "./refreshSchedule.js";
+import { automaticRefreshDay, easternDay, refreshWindow } from "./refreshSchedule.js";
 
 const app = document.querySelector("#app");
 const displayFormatters = new Map();
@@ -412,6 +412,7 @@ const portfolioCenterImagePromises = new Map();
 let portfolioShareBackgroundImagePromise = null;
 let flexCacheDbPromise = null;
 let benchmarkRequestId = 0;
+let benchmarkRefreshTimer = 0;
 let searchRenderTimer = 0;
 
 function normalizeFlexToken(value) {
@@ -1936,7 +1937,7 @@ function renderReturnCurve(data, currency, benchmark, status = returnDataStatus(
       </div>
         <div class="return-curve-legend">
           <span class="legend-item legend-portfolio"><span class="legend-dot"></span>Portfolio</span>
-          ${series.map(item => `<span class="legend-item" style="color:${item.color}"><span class="legend-dot" style="background:${item.color}"></span>${item.shortLabel} ${item.rows ? formatSignedPercent(item.rows.at(-1).returnRate) : (state.language === "en" ? "Unavailable" : "暂无数据")}</span>`).join("")}
+          ${series.map(item => `<span class="legend-item" style="color:${item.color}"><span class="legend-dot" style="background:${item.color}"></span>${item.shortLabel} ${item.rows ? formatSignedPercent(item.rows.at(-1).returnRate) : (state.language === "en" ? "Unavailable" : "暂无数据")}${item.rows && item.rows.at(-1).date < lastPoint.date ? ` (${state.language === "en" ? "as of" : "截至"} ${escapeHtml(item.rows.at(-1).date)})` : ""}</span>`).join("")}
         </div>
       <p class="return-curve-note">按 IBKR 每日 TWR 累乘计算，已剔除入金、出金等外部现金流影响。</p>
     </div>
@@ -2667,7 +2668,7 @@ function bindReturnCurveHover() {
     tooltip.innerHTML = `
       <strong>${escapeHtml(formatDate(point.date))}</strong>
       <span><b>Portfolio TWR</b><em class="${valueClass(point.portfolioReturn)}">${escapeHtml(formatSignedPercent(point.portfolioReturn))}</em></span>
-      ${(point.benchmarks || []).map(item => `<span><b style="color:${item.color}">${item.label}</b><em>${escapeHtml(formatSignedPercent(item.returnRate))}</em></span>`).join("")}
+      ${(point.benchmarks || []).map(item => `<span><b style="color:${item.color}">${item.label}</b><em style="color:${item.color}">${escapeHtml(formatSignedPercent(item.returnRate))}</em></span>`).join("")}
     `;
   };
 
@@ -3070,16 +3071,19 @@ function startAutomaticFlexRefresh() {
     if (!state.flexToken.trim() || !state.flexQueryId.trim()) return;
     const key = flexScheduleKey();
     const history = readFlexSchedule();
-    const day = automaticRefreshDay(new Date(), history, { recoverNetwork });
+    const nowDate = new Date();
+    const day = automaticRefreshDay(nowDate, history, { recoverNetwork });
     if (!day) return;
-    const recovery = history.attempted === day;
-    const attemptKey = `${key}:${day}:${recovery ? "recovery" : "scheduled"}`;
+    const slot = refreshWindow(nowDate);
+    const attemptField = slot === "early" ? "earlyAttempted" : "attempted";
+    const recovery = history[attemptField] === day;
+    const attemptKey = `${key}:${day}:${slot}:${recovery ? "recovery" : "scheduled"}`;
     if (lastAttempt === attemptKey) return;
     lastAttempt = attemptKey;
     recoverNetwork = false;
     if (recovery) recordFlexSchedule("recoveryAttempted", day, key);
     recordFlexSchedule("networkFailed", "", key);
-    recordFlexSchedule("attempted", day, key);
+    recordFlexSchedule(attemptField, day, key);
     requestFlexReport({ background: Boolean(state.data) });
   };
   window.setTimeout(check, 15_000);
@@ -3377,7 +3381,7 @@ function refreshStatusHelpText() {
         `Statement period: ${statementPeriod || "unknown"}.`,
         loadedAt ? `Cached report loaded at: ${loadedAt}.` : "",
         "Flex is an Activity Statement source, not real-time portfolio data.",
-        "Auto-refresh runs after 07:00 New York time on trading days while the app is running. After wake or reopening, it waits briefly for the network and catches up once. A connection failure can retry once after network recovery; the app does not wake the Mac.",
+        "On trading days, auto-refresh first runs at 04:05 New York time and tries again at 07:00 only if no refresh succeeded that day. After wake or reopening, it checks the current window; the app does not wake the Mac. A connection failure can retry once after network recovery.",
         "If IBKR is still generating the report, wait until the latest daily statement is available and refresh again.",
         "If the day after the last trading day is a market holiday, IBKR may not update that trading day's statement during the holiday. Refresh normally once the next trading day starts.",
         "If refresh failed, the app keeps showing the last local cached report."
@@ -3386,7 +3390,7 @@ function refreshStatusHelpText() {
         `报表区间：${statementPeriod || "未知"}。`,
         loadedAt ? `本机缓存载入时间：${loadedAt}。` : "",
         "Flex 是 Activity Statement 报表源，不是实时持仓。",
-        "自动刷新在美股交易日美东 07:00 后执行。睡醒或重新打开 App 后，稍等网络恢复再补刷；连接失败可在恢复后补试一次，不会主动唤醒电脑。App 完全退出时，等下次打开再执行。",
+        "美股交易日美东 04:05 先自动刷新一次；当天尚未成功则 07:00 再试。睡醒或重新打开后按当前时段补刷，不会补发多次请求或主动唤醒电脑。连接失败可在联网恢复后补试一次。App 完全退出时，等下次打开再执行。",
         "如果 IBKR 仍在生成报表，等最新日结报表可用后再刷新。",
         "如果最后一个交易日的下一天是节假日，IBKR 可能不会在节假日期间更新该交易日的数据；通常要等下一个交易日开始后才能正常刷新。",
         "如果刷新失败，应用会继续显示最后一次本机缓存。"
@@ -3498,6 +3502,8 @@ function parseText(text, sourceName, options = {}) {
 }
 
 function resetReport() {
+  window.clearTimeout(benchmarkRefreshTimer);
+  benchmarkRequestId++;
   state.data = null;
   state.error = "";
   state.search = "";
@@ -3509,6 +3515,7 @@ function resetReport() {
 }
 
 async function fetchBenchmark(parsed = state.data) {
+  window.clearTimeout(benchmarkRefreshTimer);
   const requestId = ++benchmarkRequestId;
   const selection = normalizeBenchmarkSelection(state.benchmarkSelection);
   state.benchmarkData = null;
@@ -3529,6 +3536,14 @@ async function fetchBenchmark(parsed = state.data) {
     const json = await fetchBenchmarkJson(url, symbol, startDate, endDate);
     applyBenchmarkData(json, symbol, parsed, requestId, startDate, endDate);
   }));
+  if (requestId === benchmarkRequestId && state.data === parsed
+      && selectedBenchmarkKeys(selection).some(symbol => !state.benchmarkData?.[symbol]
+        || state.benchmarkData[symbol].dates.at(-1) < endDate)) {
+    // Retry only benchmark history, without submitting another IBKR report request.
+    benchmarkRefreshTimer = window.setTimeout(() => {
+      if (requestId === benchmarkRequestId && state.data === parsed) fetchBenchmark(parsed);
+    }, 30 * 60 * 1000);
+  }
 }
 
 function applyBenchmarkData(json, selection, parsed, requestId, startDate, endDate) {

@@ -8,20 +8,28 @@ export const marketClosures = {
 
 const easternClock = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York', year: 'numeric', month: '2-digit',
-  day: '2-digit', hour: '2-digit', hourCycle: 'h23'
+  day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
 });
 
 export function easternDay(now = new Date()) {
   const parts = Object.fromEntries(easternClock.formatToParts(now).map(part => [part.type, part.value]));
-  return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) };
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour), minute: Number(parts.minute) };
 }
 
-export function automaticRefreshDay(now, { attempted = '', succeeded = '', networkFailed = '', recoveryAttempted = '' } = {}, { recoverNetwork = false } = {}) {
-  const { date, hour } = easternDay(now);
+export function refreshWindow(now = new Date()) {
+  const { hour, minute } = easternDay(now);
+  if (hour >= 7) return 'regular';
+  return hour * 60 + minute >= 245 ? 'early' : null;
+}
+
+export function automaticRefreshDay(now, { attempted = '', earlyAttempted = '', succeeded = '', networkFailed = '', recoveryAttempted = '' } = {}, { recoverNetwork = false } = {}) {
+  const { date } = easternDay(now);
+  const slot = refreshWindow(now);
   const holidays = marketClosures[Number(date.slice(0, 4))];
   // Unknown calendar years must not silently be treated as all weekdays open.
-  if (!holidays || hour < 7 || date === succeeded) return null;
-  if (date === attempted && !(recoverNetwork && networkFailed === date && recoveryAttempted !== date)) return null;
+  if (!holidays || !slot || date === succeeded) return null;
+  const slotAttempted = slot === 'early' ? earlyAttempted : attempted;
+  if (date === slotAttempted && !(recoverNetwork && networkFailed === date && recoveryAttempted !== date)) return null;
   const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
   if (weekday === 0 || weekday === 6 || holidays.includes(date.slice(5))) return null;
   return date;

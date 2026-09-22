@@ -55,3 +55,24 @@ context.fetch = async () => { throw Error('offline'); };
 const offline = await context.fetchLocalSp500Benchmark('sp500');
 assert.equal(offline.dates.at(-1), '2026-09-16');
 console.log('Native-first refresh, persistence and offline restoration passed.');
+
+const retryTimers = new Map();
+let timerId = 0;
+context.window.setTimeout = (fn, delay) => { retryTimers.set(++timerId, { fn, delay }); return timerId; };
+context.window.clearTimeout = id => retryTimers.delete(id);
+context.fetchLocalSp500Benchmark = async symbol => ({ ...history, symbol });
+context.fetchBenchmarkJson = async (url, symbol) => ({ ...history, symbol });
+vm.runInContext(`state.activeTab = 'daily'; state.benchmarkSelection = 'both'; state.data = {
+  navHistory: [{date:'2026-09-04',flowAdjusted:true}, {date:'2026-09-21',flowAdjusted:true}]
+};`, context);
+await context.fetchBenchmark();
+assert.equal(retryTimers.size, 1);
+assert.equal([...retryTimers.values()][0].delay, 30 * 60 * 1000);
+context.fetchBenchmarkJson = async (url, symbol) => ({ symbol, dates: ['2026-09-04', '2026-09-21'], closes: [100, 115] });
+await context.fetchBenchmark();
+assert.equal(retryTimers.size, 0);
+const staleHtml = context.renderReturnCurve({nav:{total:10000}}, 'USD', {sp500:history}, {
+  isReliable:true, rows:[{date:'2026-09-04',returnRate:0,nav:10000},{date:'2026-09-16',returnRate:1,nav:10100},{date:'2026-09-21',returnRate:2,nav:10200}]
+}, 'sp500');
+assert.ok(staleHtml.includes('2026-09-16)'));
+console.log('Stale benchmark date disclosure, delayed retry and stop-when-current passed.');

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { automaticRefreshDay } from '../src/refreshSchedule.js';
+import { automaticRefreshDay, refreshWindow } from '../src/refreshSchedule.js';
 
 let now = Date.parse('2026-09-09T11:00:00Z');
 let calls = 0;
@@ -16,7 +16,7 @@ const context = {
   },
   URLSearchParams, location: { search: '' }, navigator: { onLine: true },
   state: { flexToken: 'test', flexQueryId: 'test', data: {}, flexBusy: false, backgroundRefreshBusy: false },
-  canUseNativeFlex: () => true, normalizeFlexQueryId: value => value, automaticRefreshDay,
+  canUseNativeFlex: () => true, normalizeFlexQueryId: value => value, automaticRefreshDay, refreshWindow,
   localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) },
   window: {
     setTimeout: (fn, delay) => timers.push({ fn, at: now + delay }),
@@ -60,3 +60,15 @@ context.navigator.onLine = true;
 events.online(); advance(15_000);
 assert.equal(calls, 3);
 console.log('Scheduler integration passed: startup delay, sleep gap, recovery limit, relaunch, offline and reconnect.');
+
+now = Date.parse('2026-09-11T08:05:00Z');
+tick(); advance(15_000); tick();
+assert.equal(calls, 4);
+assert.equal(context.readFlexSchedule().earlyAttempted, '2026-09-11');
+now = Date.parse('2026-09-11T11:00:00Z');
+tick(); advance(15_000); tick();
+assert.equal(calls, 5);
+assert.equal(context.readFlexSchedule().attempted, '2026-09-11');
+tick();
+assert.equal(calls, 5);
+console.log('Early attempt followed by one 07:00 fallback passed.');
