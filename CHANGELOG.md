@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.2.20
+
+Early refresh and benchmark freshness.
+
+- Try refreshing at 04:05 New York time on trading days, with a 07:00 fallback if no refresh succeeded that day.
+- Retain sleep/reconnect recovery and holiday exclusions.
+- Retry benchmark history every 30 minutes while it trails the report; stop when current and show the last available date for incomplete curves.
+- Refresh bundled SPX and NQ100 history through September 21, 2026.
+- Match benchmark tooltip return values to their line colors: purple SPX and yellow NQ100.
+
 ## v2.2.19
 
 Sleep-friendly refresh recovery.
