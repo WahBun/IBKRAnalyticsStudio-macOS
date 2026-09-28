@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.2.21
+
+Reliable benchmark updates on macOS.
+
+- Fetch public benchmark history through concurrent, bounded network routes, including a macOS system download fallback.
+- Prevent stalled proxy connections from blocking SPX and NQ100 updates.
+- Request date-specific history without reusing stale responses, retaining the freshest successful result.
+- Add an opt-in live benchmark transport regression test.
+
 ## v2.2.20
 
 Early refresh and benchmark freshness.

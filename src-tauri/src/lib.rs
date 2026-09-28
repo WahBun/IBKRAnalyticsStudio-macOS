@@ -9,13 +9,34 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-const APP_VERSION: &str = "2.2.20";
+const APP_VERSION: &str = "2.2.21";
 const FLEX_BASE_URL: &str =
     "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService";
 const FRED_GRAPH_CSV_URL: &str = "https://fred.stlouisfed.org/graph/fredgraph.csv";
 const RETRY_DELAYS: [u64; 6] = [1, 2, 4, 8, 12, 16];
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(45);
+
+#[cfg(test)]
+mod benchmark_live_tests {
+    #[test]
+    #[ignore = "Uses the public FRED network endpoint"]
+    fn fetch_live_benchmarks() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        for symbol in ["sp500", "nq100"] {
+            let started = std::time::Instant::now();
+            let result = runtime.block_on(super::benchmark_fetch(symbol.into(), "2025-10-20".into(), "2026-09-25".into()));
+            match result {
+                Ok(raw) => {
+                    let data: serde_json::Value = serde_json::from_str(&raw).unwrap();
+                    println!("{symbol}: {:?}, latest={:?}", started.elapsed(), data["dates"].as_array().unwrap().last());
+                    assert_eq!(data["dates"].as_array().unwrap().last().unwrap(), "2026-09-25");
+                }
+                Err(error) => panic!("{symbol}: {:?}: {error}", started.elapsed()),
+            }
+        }
+    }
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -110,19 +131,57 @@ async fn benchmark_fetch(symbol: String, start: String, end: String) -> Result<S
         return Err("Benchmark date range is invalid.".to_string());
     }
 
-    let clients = build_flex_clients()?;
-    let mut transport_errors = Vec::new();
-
+    let direct = Client::builder().no_proxy().connect_timeout(Duration::from_secs(8))
+        .timeout(Duration::from_secs(18)).build().map_err(|error| error.to_string())?;
+    let mut clients = vec![("Direct benchmark connection".to_string(), direct)];
+    clients.extend(build_flex_clients()?.into_iter().filter(|(label, _)| label != "Direct connection"));
+    // Public benchmark GETs can race safely; never let a stalled proxy block a working route.
+    let mut requests = tokio::task::JoinSet::new();
+    #[cfg(target_os = "macos")]
+    {
+        let start = start.clone();
+        let end = end.clone();
+        requests.spawn(async move {
+            let result = tokio::task::spawn_blocking(move || {
+                let url = fred_benchmark_url(series, &start, &end)?;
+                let output = Command::new("/usr/bin/curl")
+                    .args(["--fail", "--silent", "--show-error", "--location", "--connect-timeout", "8", "--max-time", "20", "--header", "Cache-Control: no-cache", "--url", url.as_str()])
+                    .output().map_err(|error| FlexClientError::Transport(error.to_string()))?;
+                if !output.status.success() {
+                    return Err(FlexClientError::Transport(format!("System download failed: {}", String::from_utf8_lossy(&output.stderr))));
+                }
+                parse_fred_benchmark_csv(series.symbol, &start, &end, &String::from_utf8_lossy(&output.stdout))
+            }).await.unwrap_or_else(|error| Err(FlexClientError::Transport(error.to_string())));
+            ("macOS system download".to_string(), result)
+        });
+    }
     for (label, client) in clients {
-        match fetch_fred_benchmark_with_client(&client, series, &start, &end).await {
-            Ok(result) => {
-                return serde_json::to_string(&result)
-                    .map_err(|error| format!("Could not serialize benchmark data. {error}"));
+        let start = start.clone();
+        let end = end.clone();
+        requests.spawn(async move {
+            (label, fetch_fred_benchmark_with_client(&client, series, &start, &end).await)
+        });
+    }
+    let mut transport_errors = Vec::new();
+    let mut best: Option<BenchmarkFetchResponse> = None;
+    while let Some(completed) = requests.join_next().await {
+        match completed {
+            Ok((_, Ok(result))) => {
+                let complete = result.dates.last().is_some_and(|date| date >= &end);
+                if best.as_ref().map_or(true, |old| result.dates.last() > old.dates.last()) {
+                    best = Some(result);
+                }
+                if complete { requests.abort_all(); break; }
             }
-            Err(FlexClientError::Transport(message)) | Err(FlexClientError::Fatal(message)) => {
+            Ok((label, Err(FlexClientError::Transport(message) | FlexClientError::Fatal(message)))) => {
                 transport_errors.push(format!("{label}: {message}"));
             }
+            Err(error) => transport_errors.push(error.to_string()),
         }
+    }
+    if let Some(result) = best {
+        return serde_json::to_string(&result)
+            .map_err(|error| format!("Could not serialize benchmark data. {error}"));
     }
 
     Err(format!(
@@ -197,18 +256,24 @@ fn save_json_file(filename: String, json_text: String) -> Result<SaveFileRespons
     })
 }
 
+fn fred_benchmark_url(series: BenchmarkSeries, start: &str, end: &str) -> Result<Url, FlexClientError> {
+    let prior_year = start[..4].parse::<u32>().unwrap_or(2026).saturating_sub(1);
+    let history_start = format!("{prior_year}-01-01");
+    Url::parse_with_params(FRED_GRAPH_CSV_URL, &[("id", series.fred_id), ("cosd", history_start.as_str()), ("coed", end)])
+        .map_err(|error| FlexClientError::Fatal(format!("Could not build the benchmark URL. {error}")))
+}
+
 async fn fetch_fred_benchmark_with_client(
     client: &Client,
     series: BenchmarkSeries,
     start: &str,
     end: &str,
 ) -> Result<BenchmarkFetchResponse, FlexClientError> {
-    let url =
-        Url::parse_with_params(FRED_GRAPH_CSV_URL, &[("id", series.fred_id)]).map_err(|error| {
-            FlexClientError::Fatal(format!("Could not build the benchmark URL. {error}"))
-        })?;
+    let url = fred_benchmark_url(series, start, end)?;
     let response = client
         .get(url)
+        .timeout(Duration::from_secs(18))
+        .header(reqwest::header::CACHE_CONTROL, "no-cache")
         .header(
             USER_AGENT,
             format!("IBKRAnalyticsStudio/{APP_VERSION} Tauri"),
