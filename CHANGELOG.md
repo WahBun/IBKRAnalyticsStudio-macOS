@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.2.22
+
+Faster local review and startup refresh checks.
+
+- Check automatic refresh eligibility immediately after cached report hydration instead of waiting 15 seconds on normal launch.
+- Preserve trading-day rules, successful-refresh deduplication, and wake/reconnect network grace periods.
+- Cache Daily month grouping and searchable trade text to reduce repeated work when filtering and navigating.
+- Coalesce return-curve pointer updates per animation frame and use binary search for hover lookup.
+- Avoid rebuilding the dashboard when clicking the already active tab.
+- Add Daily output parity, cache invalidation, hover scheduling, and immediate-startup eligibility tests.
+
 ## v2.2.21
 
 Reliable benchmark updates on macOS.

@@ -36,7 +36,7 @@ const advance = ms => {
   ready.forEach(timer => timer.fn());
 };
 context.startAutomaticFlexRefresh();
-assert.equal(calls, 0);
+assert.equal(calls, 1, 'Eligible online launch refreshes immediately');
 advance(15_000);
 assert.equal(calls, 1);
 tick(); events.focus();
@@ -59,7 +59,7 @@ assert.equal(calls, 2);
 context.navigator.onLine = true;
 events.online(); advance(15_000);
 assert.equal(calls, 3);
-console.log('Scheduler integration passed: startup delay, sleep gap, recovery limit, relaunch, offline and reconnect.');
+console.log('Scheduler integration passed: immediate startup, sleep gap, recovery limit, relaunch, offline and reconnect.');
 
 now = Date.parse('2026-09-11T08:05:00Z');
 tick(); advance(15_000); tick();
@@ -72,3 +72,29 @@ assert.equal(context.readFlexSchedule().attempted, '2026-09-11');
 tick();
 assert.equal(calls, 5);
 console.log('Early attempt followed by one 07:00 fallback passed.');
+
+for (const [date, history, online, token] of [
+  ['2026-09-12T11:00:00Z', {}, true, 'test'],
+  ['2026-09-07T11:00:00Z', {}, true, 'test'],
+  ['2026-09-14T08:04:00Z', {}, true, 'test'],
+  ['2026-09-14T11:00:00Z', { succeeded: '2026-09-14' }, true, 'test'],
+  ['2026-09-14T11:00:00Z', {}, false, 'test'],
+  ['2026-09-14T11:00:00Z', {}, true, '']
+]) {
+  now = Date.parse(date);
+  storage.set(context.flexScheduleKey(), JSON.stringify(history));
+  context.navigator.onLine = online;
+  context.state.flexToken = token;
+  const before = calls;
+  context.startAutomaticFlexRefresh();
+  assert.equal(calls, before, `Ineligible startup must skip: ${date}`);
+}
+context.state.flexToken = 'test';
+context.navigator.onLine = true;
+now = Date.parse('2026-09-15T08:05:00Z');
+storage.clear();
+const before = calls;
+context.startAutomaticFlexRefresh();
+assert.equal(calls, before + 1, 'Early window also starts immediately');
+assert.equal(context.readFlexSchedule().earlyAttempted, '2026-09-15');
+console.log('Immediate startup eligibility passed: holiday, weekend, time, success, offline and credentials.');

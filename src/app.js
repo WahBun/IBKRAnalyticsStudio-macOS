@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.2.21";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.21";
-import { parseIbkrReport } from "./parser.js?v=2.2.21";
+import { decodeReportFile } from "./encoding.js?v=2.2.22";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.22";
+import { parseIbkrReport } from "./parser.js?v=2.2.22";
 import { automaticRefreshDay, easternDay, refreshWindow } from "./refreshSchedule.js";
 
 const app = document.querySelector("#app");
@@ -379,10 +379,10 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.21";
-const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.21";
-const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.21";
-const PORTFOLIO_SHARE_BACKGROUND_SRC = "./assets/portfolio-share-background.png?v=2.2.21";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.22";
+const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.22";
+const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.22";
+const PORTFOLIO_SHARE_BACKGROUND_SRC = "./assets/portfolio-share-background.png?v=2.2.22";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#8b5cf6", "#f59e0b", "#ef4444", "#22c55e", "#06b6d4", "#60a5fa"];
@@ -393,7 +393,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
-const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.21";
+const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.22";
 const BENCHMARK_FETCH_TIMEOUT_MS = 5500;
 const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark-v2";
 const POSITION_AMOUNTS_HIDDEN_STORAGE_KEY = "ibkr-position-amounts-hidden";
@@ -403,7 +403,7 @@ const BENCHMARK_OPTIONS = {
   nq100: { id: "nq100", label: "NQ100", shortLabel: "NQ100", color: "#d79a19" },
   both: { id: "both", label: "SPX vs NQ100", shortLabel: "SPX vs NQ100" }
 };
-const APP_VERSION = "2.2.21";
+const APP_VERSION = "2.2.22";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 const DEFAULT_REPORT_TAB = "daily";
 
@@ -479,6 +479,9 @@ const state = {
   benchmarkSelection: normalizeBenchmarkSelection(localStorage.getItem(BENCHMARK_STORAGE_KEY) || "both"),
   benchmarkData: null
 };
+
+const dailyViewCache = new WeakMap();
+const dailySearchCache = new WeakMap();
 
 applyTheme();
 applyLanguage();
@@ -1007,7 +1010,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.2.21" alt="" />
+        <img src="./assets/app-logo.png?v=2.2.22" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1190,23 +1193,44 @@ function renderPerformance(data) {
   `;
 }
 
-function renderDailyStats(data) {
-  const currency = data.baseCurrency || "USD";
-  const rows = data.dailyTradeStats || [];
+function dailyView(data) {
+  const key = `${document.documentElement.lang}:${state.search.trim().toLowerCase()}`;
+  const cached = dailyViewCache.get(data);
+  if (cached?.key === key) return cached;
   const allTradeRows = data.tradeDetails || [];
   const isFiltered = Boolean(state.search.trim());
-  const visibleTradeRows = isFiltered ? allTradeRows.filter((row) => dailyTradeSearchMatch(row)) : allTradeRows;
+  const visibleTradeRows = isFiltered ? allTradeRows.filter(dailyTradeSearchMatch) : allTradeRows;
+  const rows = data.dailyTradeStats || [];
   const visibleRows = isFiltered ? summarizeDailyTradeRows(visibleTradeRows) : rows;
-  const allMonths = Array.from(new Set(rows.map((row) => row.month))).sort();
-  const visibleMonths = Array.from(new Set(visibleRows.map((row) => row.month))).sort();
-  const months = isFiltered && visibleMonths.length ? visibleMonths : allMonths;
+  const groupMonths = (items) => {
+    const groups = new Map();
+    for (const row of items) {
+      if (!groups.has(row.month)) groups.set(row.month, []);
+      groups.get(row.month).push(row);
+    }
+    return groups;
+  };
+  const statsByMonth = groupMonths(visibleRows);
+  const tradesByMonth = groupMonths(visibleTradeRows);
+  const allTradesByMonth = isFiltered ? groupMonths(allTradeRows) : tradesByMonth;
+  const allMonths = Array.from(new Set(rows.map(row => row.month))).sort();
+  const visibleMonths = [...statsByMonth.keys()].sort();
+  const result = { key, isFiltered, statsByMonth, tradesByMonth, allTradesByMonth,
+    months: isFiltered && visibleMonths.length ? visibleMonths : allMonths };
+  dailyViewCache.set(data, result);
+  return result;
+}
+
+function renderDailyStats(data) {
+  const currency = data.baseCurrency || "USD";
+  const { isFiltered, months, statsByMonth, tradesByMonth, allTradesByMonth } = dailyView(data);
   const selectedMonth = months.includes(state.dailyMonth) ? state.dailyMonth : months.at(-1) || "";
-  const monthRows = selectedMonth ? visibleRows.filter((row) => row.month === selectedMonth) : [];
-  const monthlyTradeRows = selectedMonth ? visibleTradeRows.filter((row) => row.month === selectedMonth) : [];
+  const monthRows = statsByMonth.get(selectedMonth) || [];
+  const monthlyTradeRows = tradesByMonth.get(selectedMonth) || [];
   const selectedDate = monthlyTradeRows.some((row) => row.date === state.dailySelectedDate) ? state.dailySelectedDate : "";
   const tradeRows = selectedDate ? monthlyTradeRows.filter((row) => row.date === selectedDate) : monthlyTradeRows;
   const sortedTradeRows = sortDailyTradeRows(tradeRows);
-  const unfilteredMonthlyTradeRows = selectedMonth ? allTradeRows.filter((row) => row.month === selectedMonth) : [];
+  const unfilteredMonthlyTradeRows = allTradesByMonth.get(selectedMonth) || [];
   const unfilteredTradeRows = selectedDate ? unfilteredMonthlyTradeRows.filter((row) => row.date === selectedDate) : unfilteredMonthlyTradeRows;
   const rowCountLabel = isFiltered
     ? `${formatNumber(tradeRows.length)} / ${formatNumber(unfilteredTradeRows.length)} rows`
@@ -2455,7 +2479,9 @@ function bindDashboardEvents() {
 
   document.querySelectorAll(".tab-button").forEach((button) => {
     button.addEventListener("click", () => {
-      state.activeTab = button.dataset.tab || "overview";
+      const nextTab = button.dataset.tab || "overview";
+      if (nextTab === state.activeTab) return;
+      state.activeTab = nextTab;
       render();
     });
   });
@@ -2613,6 +2639,8 @@ function bindReturnCurveHover() {
   if (!svg || !tooltip || !crosshair || !portfolioMarker) return;
 
   let activeIndex = points.length - 1;
+  let hoverFrame = 0;
+  let pointerX = 0;
 
   const lerp = (from, to, ratio) => from + (to - from) * ratio;
 
@@ -2620,7 +2648,14 @@ function bindReturnCurveHover() {
     const minX = points[0].portfolioX;
     const maxX = points.at(-1).portfolioX;
     const x = Math.min(maxX, Math.max(minX, viewX));
-    const rightIndex = points.findIndex((point) => point.portfolioX >= x);
+    let low = 0;
+    let high = points.length - 1;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (points[mid].portfolioX < x) low = mid + 1;
+      else high = mid;
+    }
+    const rightIndex = low;
 
     if (rightIndex <= 0) {
       return { point: { ...points[0], portfolioX: minX }, index: 0 };
@@ -2707,6 +2742,8 @@ function bindReturnCurveHover() {
   };
 
   const hidePoint = () => {
+    cancelAnimationFrame(hoverFrame);
+    hoverFrame = 0;
     chart.classList.remove("is-hovering");
     tooltip.classList.remove("is-visible");
   };
@@ -2718,9 +2755,15 @@ function bindReturnCurveHover() {
   });
 
   chart.addEventListener("pointermove", (event) => {
-    const result = pointerPoint(event.clientX);
-    activeIndex = result.index;
-    showPoint(result.point);
+    pointerX = event.clientX;
+    if (hoverFrame) return;
+    hoverFrame = requestAnimationFrame(() => {
+      hoverFrame = 0;
+      if (!chart.isConnected) return;
+      const result = pointerPoint(pointerX);
+      activeIndex = result.index;
+      showPoint(result.point);
+    });
   });
 
   chart.addEventListener("pointerleave", hidePoint);
@@ -3056,7 +3099,7 @@ function startAutomaticFlexRefresh() {
   if (!canUseNativeFlex() || new URLSearchParams(location.search).get("sample") === "1") return;
   let lastAttempt = "";
   let lastCheckAt = Date.now();
-  let settleUntil = lastCheckAt + 15_000;
+  let settleUntil = lastCheckAt;
   let recoverNetwork = true;
   const check = () => {
     const now = Date.now();
@@ -3086,7 +3129,8 @@ function startAutomaticFlexRefresh() {
     recordFlexSchedule(attemptField, day, key);
     requestFlexReport({ background: Boolean(state.data) });
   };
-  window.setTimeout(check, 15_000);
+  // Cached report hydration has completed; a normal launch needs no network grace period.
+  check();
   window.setInterval(check, 30_000);
   window.addEventListener("focus", check);
   window.addEventListener("online", () => {
@@ -3426,7 +3470,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.21");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.22");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -4673,7 +4717,10 @@ function searchMatch(values) {
 }
 
 function dailyTradeSearchMatch(row) {
-  return searchMatch([
+  const language = document.documentElement.lang;
+  let cached = dailySearchCache.get(row);
+  if (!cached || cached.language !== language) {
+    cached = { language, values: [
     row.symbol,
     row.baseSymbol,
     row.assetCategory,
@@ -4685,7 +4732,11 @@ function dailyTradeSearchMatch(row) {
     row.date,
     formatDate(row.date),
     formatDateTime(row.dateTime)
-  ]);
+    ].map(value => String(value || "").toLowerCase()) };
+    dailySearchCache.set(row, cached);
+  }
+  const query = state.search.trim().toLowerCase();
+  return !query || cached.values.some(value => value.includes(query));
 }
 
 function fingerprintReportText(text) {
