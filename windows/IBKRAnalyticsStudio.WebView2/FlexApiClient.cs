@@ -22,7 +22,7 @@ public sealed class FlexApiClient
         this.httpClient = httpClient;
     }
 
-    public async Task<FlexFetchResult> FetchReportAsync(string token, string queryId, CancellationToken cancellationToken)
+    public async Task<FlexFetchResult> FetchReportAsync(string token, string queryId, string start, string end, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(token))
         {
@@ -34,13 +34,17 @@ public sealed class FlexApiClient
             throw new ArgumentException("Flex Query ID is required.", nameof(queryId));
         }
 
-        string referenceCode = await SendRequestAsync(token.Trim(), queryId.Trim(), cancellationToken);
+        string referenceCode = await SendRequestAsync(token.Trim(), queryId.Trim(), start, end, cancellationToken);
         return await GetStatementWithRetryAsync(token.Trim(), referenceCode, cancellationToken);
     }
 
-    private async Task<string> SendRequestAsync(string token, string queryId, CancellationToken cancellationToken)
+    private async Task<string> SendRequestAsync(string token, string queryId, string start, string end, CancellationToken cancellationToken)
     {
-        Uri requestUri = BuildUri("/SendRequest", token, queryId);
+        if (!DateOnly.TryParseExact(start, "yyyy-MM-dd", out var first) ||
+            !DateOnly.TryParseExact(end, "yyyy-MM-dd", out var last) || first > last)
+            throw new ArgumentException("Invalid Flex report date range.");
+        Uri requestUri = new(BuildUri("/SendRequest", token, queryId).AbsoluteUri +
+            $"&fd={first:yyyyMMdd}&td={last:yyyyMMdd}");
         using HttpResponseMessage response = await httpClient.GetAsync(requestUri, cancellationToken);
         string body = await response.Content.ReadAsStringAsync(cancellationToken);
 
@@ -170,7 +174,7 @@ public sealed class FlexApiException : Exception
     }
 }
 
-public sealed record FlexBridgeRequest(string? Type, string? RequestId, string? Token, string? QueryId, string? Url)
+public sealed record FlexBridgeRequest(string? Type, string? RequestId, string? Token, string? QueryId, string? Url, string? Start, string? End)
 {
     public static FlexBridgeRequest? TryParse(string json)
     {

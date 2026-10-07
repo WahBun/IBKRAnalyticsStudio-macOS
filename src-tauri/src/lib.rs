@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-const APP_VERSION: &str = "2.2.22";
+const APP_VERSION: &str = "2.2.23";
 const FLEX_BASE_URL: &str =
     "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService";
 const FRED_GRAPH_CSV_URL: &str = "https://fred.stlouisfed.org/graph/fredgraph.csv";
@@ -89,7 +89,7 @@ impl From<String> for FlexClientError {
 }
 
 #[tauri::command]
-async fn flex_fetch(token: String, query_id: String) -> Result<FlexFetchResponse, String> {
+async fn flex_fetch(token: String, query_id: String, start: String, end: String) -> Result<FlexFetchResponse, String> {
     let token = token.trim().to_string();
     let query_id = query_id.trim().to_string();
 
@@ -101,11 +101,12 @@ async fn flex_fetch(token: String, query_id: String) -> Result<FlexFetchResponse
         return Err("Flex Query ID is required.".to_string());
     }
 
+    validate_flex_dates(&start, &end)?;
     let clients = build_flex_clients()?;
     let mut transport_errors = Vec::new();
 
     for (label, client) in clients {
-        match fetch_report_with_client(&client, &token, &query_id).await {
+        match fetch_report_with_client(&client, &token, &query_id, &start, &end).await {
             Ok(result) => return Ok(result),
             Err(FlexClientError::Transport(message)) => {
                 transport_errors.push(format!("{label}: {message}"));
@@ -378,8 +379,10 @@ async fn fetch_report_with_client(
     client: &Client,
     token: &str,
     query_id: &str,
+    start: &str,
+    end: &str,
 ) -> Result<FlexFetchResponse, FlexClientError> {
-    let reference_code = send_request(client, token, query_id).await?;
+    let reference_code = send_request(client, token, query_id, start, end).await?;
     get_statement_with_retry(client, token, &reference_code).await
 }
 
@@ -517,8 +520,10 @@ async fn send_request(
     client: &Client,
     token: &str,
     query_id: &str,
+    start: &str,
+    end: &str,
 ) -> Result<String, FlexClientError> {
-    let url = build_flex_url("SendRequest", token, query_id)?;
+    let url = build_dated_flex_url(token, query_id, start, end)?;
     let response = client
         .get(url)
         .header(
@@ -812,4 +817,56 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running IBKR Analytics Studio");
+}
+
+fn validate_flex_dates(start: &str, end: &str) -> Result<(), String> {
+    if !looks_like_iso_date(start) || !looks_like_iso_date(end) || start > end {
+        return Err("Invalid Flex report date range.".into());
+    }
+    Ok(())
+}
+
+fn build_dated_flex_url(token: &str, query: &str, start: &str, end: &str) -> Result<Url, String> {
+    validate_flex_dates(start, end)?;
+    let mut url = build_flex_url("SendRequest", token, query)?;
+    url.query_pairs_mut().append_pair("fd", &start.replace('-', ""))
+        .append_pair("td", &end.replace('-', ""));
+    Ok(url)
+}
+
+#[cfg(test)]
+mod flex_date_tests {
+    #[test]
+    fn explicit_dates_only_on_generation() {
+        let url = super::build_dated_flex_url("secret", "query", "2025-10-07", "2026-10-06").unwrap();
+        let params: std::collections::HashMap<_, _> = url.query_pairs().collect();
+        assert_eq!(params.get("fd").unwrap(), "20251007");
+        assert_eq!(params.get("td").unwrap(), "20261006");
+        let statement = super::build_flex_url("GetStatement", "secret", "ref").unwrap();
+        assert!(!statement.query_pairs().any(|(key, _)| key == "fd" || key == "td"));
+        assert!(super::build_dated_flex_url("secret", "query", "2026-10-07", "2026-10-06").is_err());
+    }
+}
+
+#[cfg(test)]
+mod flex_live_tests {
+    #[test]
+    #[ignore = "Requires an explicitly supplied private Flex config and date range"]
+    fn explicit_range_report() {
+        let path = std::env::var("FLEX_TEST_CONFIG").expect("private config path required");
+        let config: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let result = runtime.block_on(super::flex_fetch(config["token"].as_str().unwrap().into(),
+            config["query_id"].as_str().unwrap().into(), std::env::var("FLEX_TEST_START").unwrap(),
+            std::env::var("FLEX_TEST_END").unwrap()));
+        let response = match result { Ok(r) => r, Err(_) => panic!("Live Flex verification failed; credentials and response withheld") };
+        let output = std::env::var("FLEX_TEST_OUTPUT").expect("private output path required");
+        #[cfg(unix)] {
+            use std::os::unix::fs::OpenOptionsExt;
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new().create_new(true).write(true).mode(0o600).open(output).unwrap();
+            file.write_all(response.report_text.as_bytes()).unwrap();
+        }
+        assert!(!response.report_text.is_empty());
+    }
 }

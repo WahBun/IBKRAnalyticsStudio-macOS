@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { flexRequestRange, flexResponseIssue } from '../src/flexRequest.js';
+const range = flexRequestRange(null,new Date('2026-10-07T12:00:00Z'));
+assert.deepEqual(range,{start:'2025-10-07',end:'2026-10-06',requiredThrough:'2026-10-06'});
+assert.equal(flexRequestRange(null,new Date('2026-10-07T01:00:00Z')).end,'2026-10-05');
+assert.equal(flexRequestRange(null,new Date('2026-10-05T12:00:00Z')).requiredThrough,'2026-10-02');
+assert.equal(flexRequestRange(null,new Date('2026-09-08T12:00:00Z')).requiredThrough,'2026-09-04');
+assert.equal(flexRequestRange({reportScope:{start:'2024-01-01'}},new Date('2026-10-07T12:00:00Z')).start,'2024-01-01');
+assert.equal(flexResponseIssue('MSG,The following accounts were excluded', {reportScope:{end:'2026-10-06'}},range),'excluded');
+assert.equal(flexResponseIssue('report',{reportScope:{end:'2026-10-05'}},range),'stale');
+assert.equal(flexResponseIssue('report',{reportScope:{end:'2026-10-06'}},range),'');
+console.log('Flex explicit dates, NY boundary, weekend/holiday freshness and excluded-report protection passed.');

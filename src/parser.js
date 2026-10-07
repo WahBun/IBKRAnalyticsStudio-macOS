@@ -25,6 +25,15 @@ const FLEX_NAV_TOTAL_KEYS = [
 export function parseIbkrReport(csvText) {
   const sections = collectSections(csvText);
   const accountInfo = parseAccountInfo(sections);
+  const accountIds = [...new Set([
+    ...(sections.reportAccounts || []),
+    ...Object.values(sections).flatMap(rows => rows.map(row => row.Account || "")),
+    String(accountInfo.account || "").replace(/\s*\(.*\)$/, "")
+  ].filter(Boolean))].sort();
+  const periodDates = accountInfo.period.split(" - ").map(value => parseDate(value));
+  const reportScope = { accountIds,
+    start: periodDates[0] ? dateKey(periodDates[0]) : "",
+    end: periodDates[1] ? dateKey(periodDates[1]) : "" };
   const exchangeRates = parseExchangeRates(sections, accountInfo.baseCurrency);
   const dividendIncome = parseDividendIncome(sections, exchangeRates);
   const positions = applyPositionDividends(
@@ -57,6 +66,7 @@ export function parseIbkrReport(csvText) {
   const warnings = buildWarnings(sections, nav, positions, tradeSummary);
 
   return {
+    reportScope,
     accountInfo,
     baseCurrency: accountInfo.baseCurrency,
     exchangeRates,
@@ -183,6 +193,12 @@ function collectFlexSections(rows) {
     rawByCode[code].push(row);
   }
 
+  Object.defineProperty(sections, "reportAccounts", {
+    value: [...new Set(['ACCT', 'CNAV', 'EQUT', 'POST', 'TRNT'].flatMap(code =>
+      (rawByCode[code] || []).map(row => row.ClientAccountID)
+    ).filter(account => account && account !== '-'))]
+  });
+
   if (statementPeriod) {
     sections.Statement = [{ "Field Name": "Period", "Field Value": statementPeriod }];
   }
@@ -274,7 +290,9 @@ function collectFlexSections(rows) {
     }));
   }
 
-  return Object.fromEntries(Object.entries(sections).filter(([, value]) => value?.length));
+  const result = Object.fromEntries(Object.entries(sections).filter(([, value]) => value?.length));
+  Object.defineProperty(result, "reportAccounts", { value: sections.reportAccounts });
+  return result;
 }
 
 function flexRowsBySectionName(rawByCode, namesByCode, pattern) {
@@ -547,6 +565,7 @@ function flexPositionRows(rows) {
 
 function flexTradeRow(row) {
   return {
+    Account: row.ClientAccountID || "",
     DataDiscriminator: "Order",
     "Asset Category": flexAssetCategory(row.AssetClass),
     Currency: row.CurrencyPrimary || "",
@@ -1341,6 +1360,7 @@ function parseTradeDetails(rows = [], exchangeRates) {
       const mtmPL = toNumber(row["MTM P/L"]) * rate;
 
       return {
+        account: row.Account || "",
         date: date ? dateKey(date) : "",
         dateTime: date ? date.toISOString() : "",
         month: date ? monthKey(date) : "",

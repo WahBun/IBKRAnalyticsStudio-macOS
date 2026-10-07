@@ -1,7 +1,10 @@
-import { decodeReportFile } from "./encoding.js?v=2.2.22";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.22";
-import { parseIbkrReport } from "./parser.js?v=2.2.22";
+import { decodeReportFile } from "./encoding.js?v=2.2.23";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.23";
+import { parseIbkrReport } from "./parser.js?v=2.2.23";
 import { automaticRefreshDay, easternDay, refreshWindow } from "./refreshSchedule.js";
+import { reportReplacementIssue } from "./reportIntegrity.js";
+
+import { flexRequestRange, flexResponseIssue } from "./flexRequest.js";
 
 const app = document.querySelector("#app");
 const displayFormatters = new Map();
@@ -379,10 +382,10 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.22";
-const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.22";
-const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.22";
-const PORTFOLIO_SHARE_BACKGROUND_SRC = "./assets/portfolio-share-background.png?v=2.2.22";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.23";
+const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.23";
+const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.23";
+const PORTFOLIO_SHARE_BACKGROUND_SRC = "./assets/portfolio-share-background.png?v=2.2.23";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#8b5cf6", "#f59e0b", "#ef4444", "#22c55e", "#06b6d4", "#60a5fa"];
@@ -393,7 +396,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
-const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.22";
+const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.23";
 const BENCHMARK_FETCH_TIMEOUT_MS = 5500;
 const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark-v2";
 const POSITION_AMOUNTS_HIDDEN_STORAGE_KEY = "ibkr-position-amounts-hidden";
@@ -403,7 +406,7 @@ const BENCHMARK_OPTIONS = {
   nq100: { id: "nq100", label: "NQ100", shortLabel: "NQ100", color: "#d79a19" },
   both: { id: "both", label: "SPX vs NQ100", shortLabel: "SPX vs NQ100" }
 };
-const APP_VERSION = "2.2.22";
+const APP_VERSION = "2.2.23";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 const DEFAULT_REPORT_TAB = "daily";
 
@@ -1010,7 +1013,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.2.22" alt="" />
+        <img src="./assets/app-logo.png?v=2.2.23" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1352,6 +1355,8 @@ function renderDataQuality(data) {
   return `
     <div class="content-stack">
       ${renderPageHeading(t("dataHeading"), data, t("dataSubtitle"))}
+      <button class="secondary-button" id="importReportButton" type="button">${icon("upload")}${state.language === "zh" ? "导入报表" : "Import report"}</button>
+      <input id="importReportFile" type="file" accept=".csv,.txt" hidden />
       <div class="grid-12">
         <section class="table-card span-6">
           <div class="table-header"><h2>已解析 CSV 区块</h2><span class="pill">${formatNumber(sectionRows.length)}</span></div>
@@ -2474,6 +2479,11 @@ function bindUploadEvents() {
 }
 
 function bindDashboardEvents() {
+  document.querySelector("#importReportButton")?.addEventListener("click", () => document.querySelector("#importReportFile")?.click());
+  document.querySelector("#importReportFile")?.addEventListener("change", event => {
+    const file = event.target.files?.[0];
+    if (file && !state.flexBusy && !state.backgroundRefreshBusy) readFile(file, { persist: true });
+  });
   bindThemeToggle();
   bindLanguageSwitch();
 
@@ -3180,11 +3190,14 @@ async function writeCachedFlexReport(entry) {
 
   return new Promise((resolve) => {
     const transaction = db.transaction(FLEX_CACHE_STORE_NAME, "readwrite");
-    transaction.objectStore(FLEX_CACHE_STORE_NAME).put({
-      id: FLEX_CACHE_KEY,
-      version: 1,
-      ...entry
-    });
+    const store = transaction.objectStore(FLEX_CACHE_STORE_NAME);
+    const previous = store.get(FLEX_CACHE_KEY);
+    previous.onsuccess = () => {
+      if (previous.result && previous.result.fingerprint !== entry.fingerprint) {
+        store.put({ ...previous.result, id: "previous-flex-report" });
+      }
+      store.put({ id: FLEX_CACHE_KEY, version: 1, ...entry });
+    };
     transaction.oncomplete = () => resolve(true);
     transaction.onerror = () => resolve(false);
     transaction.onabort = () => resolve(false);
@@ -3197,7 +3210,7 @@ async function clearCachedFlexReport() {
 
   await new Promise((resolve) => {
     const transaction = db.transaction(FLEX_CACHE_STORE_NAME, "readwrite");
-    transaction.objectStore(FLEX_CACHE_STORE_NAME).delete(FLEX_CACHE_KEY);
+    transaction.objectStore(FLEX_CACHE_STORE_NAME).clear();
     transaction.oncomplete = resolve;
     transaction.onerror = resolve;
     transaction.onabort = resolve;
@@ -3266,6 +3279,7 @@ function requestFlexReport({ background = false } = {}) {
   }
 
   const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const range = flexRequestRange(state.data);
   const scheduleKey = flexScheduleKey();
   const scheduleDay = easternDay().date;
   if (background) {
@@ -3321,6 +3335,21 @@ function requestFlexReport({ background = false } = {}) {
       return;
     }
 
+    try {
+      const incoming = parseIbkrReport(reportText);
+      const issue = flexResponseIssue(reportText, incoming, range);
+      if (issue) throw new Error(state.language === "zh"
+        ? (issue === 'excluded' ? 'IBKR 返回的报表缺少账户，已保留原历史。请稍后重试。' : 'IBKR 日结报表尚未更新到目标日期，已保留原历史。稍后将按刷新计划重试。')
+        : (issue === 'excluded' ? 'IBKR excluded accounts; previous history retained. Retry later.' : 'IBKR daily report is not yet current; previous history retained. Scheduled retry remains available.'));
+      const replacement = reportReplacementIssue(state.data, incoming);
+      if (replacement) throw new Error(replacement);
+    } catch (error) {
+      state.flexStatus = String(error.message || error);
+      state.cacheStatus = flexRefreshFailureStatus(state.flexStatus);
+      if (state.data) updateFlexRefreshUi(); else renderUpload();
+      return;
+    }
+
     const fetchedAt = new Date().toISOString();
     const sourceName = `ibkr-flex-${message.referenceCode || "report"}.csv`;
     const reportFingerprint = fingerprintReportText(reportText);
@@ -3345,9 +3374,10 @@ function requestFlexReport({ background = false } = {}) {
 
     state.flexStatus = "IBKR Flex report downloaded. Parsing...";
     const parsed = parseText(reportText, sourceName, {
+      validateReplacement: true,
       preserveView: background,
       defaultTab: DEFAULT_REPORT_TAB,
-      keepExistingOnError: background,
+      keepExistingOnError: Boolean(state.data),
       cacheStatus: background ? `报表已更新 ${formatDateTime(fetchedAt)}` : `已缓存 ${formatDateTime(fetchedAt)}`
     });
 
@@ -3368,7 +3398,8 @@ function requestFlexReport({ background = false } = {}) {
   if (canUseTauriBridge()) {
     getTauriInvoke()("flex_fetch", {
       token: state.flexToken.trim(),
-      queryId: state.flexQueryId.trim()
+      queryId: state.flexQueryId.trim(),
+      start: range.start, end: range.end
     }).then((result) => handleFlexResult({
       type: "flex.result",
       requestId,
@@ -3398,7 +3429,8 @@ function requestFlexReport({ background = false } = {}) {
     type: "flex.fetch",
     requestId,
     token: state.flexToken.trim(),
-    queryId: state.flexQueryId.trim()
+    queryId: state.flexQueryId.trim(),
+    start: range.start, end: range.end
   });
 }
 
@@ -3457,11 +3489,20 @@ function refreshStatusHelpText() {
   return lines.filter(Boolean).join("\n");
 }
 
-async function readFile(file) {
+async function readFile(file, { persist = false } = {}) {
   try {
     const buffer = await file.arrayBuffer();
     const decoded = decodeReportFile(buffer);
-    parseText(decoded.text, file.name);
+    const parsed = parseText(decoded.text, file.name, { keepExistingOnError: Boolean(state.data),
+      cacheStatus: persist ? "Imported report; not a live refresh" : "" });
+    if (parsed && persist) {
+      const saved = await writeCachedFlexReport({ text: decoded.text, sourceName: file.name,
+        fetchedAt: "", fingerprint: fingerprintReportText(decoded.text) });
+      if (!saved) {
+        state.cacheStatus = "Imported in memory only; cache write failed";
+        updateFlexRefreshUi();
+      }
+    }
   } catch (error) {
     state.error = "读取文件失败，请重新选择报表。";
     renderUpload();
@@ -3470,7 +3511,7 @@ async function readFile(file) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.22");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.23");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -3519,6 +3560,10 @@ function parseText(text, sourceName, options = {}) {
     if (!Object.keys(parsed.sectionStats).length) {
       throw new Error("No recognizable sections");
     }
+    if (options.validateReplacement) {
+      const issue = reportReplacementIssue(state.data, parsed);
+      if (issue) throw new Error(issue);
+    }
     state.data = parsed;
     state.sourceName = sourceName || "";
     state.reportFingerprint = fingerprintReportText(cleanText);
@@ -3535,6 +3580,7 @@ function parseText(text, sourceName, options = {}) {
     return true;
   } catch (error) {
     if (options.keepExistingOnError && state.data) {
+      state.flexStatus = String(error);
       state.cacheStatus = "报表刷新失败，继续显示缓存";
       renderDashboard();
       return false;

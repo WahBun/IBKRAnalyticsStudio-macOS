@@ -143,6 +143,7 @@ public sealed class MainForm : Form
             FlexFetchResult result = await flexApiClient.FetchReportAsync(
                 request.Token ?? "",
                 request.QueryId ?? "",
+                request.Start ?? "", request.End ?? "",
                 CancellationToken.None);
 
             PostFlexResponse(new
