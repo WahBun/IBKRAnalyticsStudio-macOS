@@ -3,6 +3,7 @@ import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.23";
 import { parseIbkrReport } from "./parser.js?v=2.2.23";
 import { automaticRefreshDay, easternDay, refreshWindow } from "./refreshSchedule.js";
 import { reportReplacementIssue } from "./reportIntegrity.js";
+import { mergeFlexHistory } from "./flexHistory.js";
 
 import { flexRequestRange, flexResponseIssue } from "./flexRequest.js";
 
@@ -3312,7 +3313,7 @@ function requestFlexReport({ background = false } = {}) {
       return;
     }
 
-    const reportText = String(message.reportText || "");
+    let reportText = String(message.reportText || "");
     if (!reportText.trim()) {
       state.flexStatus = "IBKR returned an empty Flex report.";
       if (background && state.data) {
@@ -3338,11 +3339,10 @@ function requestFlexReport({ background = false } = {}) {
     try {
       const incoming = parseIbkrReport(reportText);
       const issue = flexResponseIssue(reportText, incoming, range);
-      if (issue) throw new Error(state.language === "zh"
-        ? (issue === 'excluded' ? 'IBKR 返回的报表缺少账户，已保留原历史。请稍后重试。' : 'IBKR 日结报表尚未更新到目标日期，已保留原历史。稍后将按刷新计划重试。')
-        : (issue === 'excluded' ? 'IBKR excluded accounts; previous history retained. Retry later.' : 'IBKR daily report is not yet current; previous history retained. Scheduled retry remains available.'));
-      const replacement = reportReplacementIssue(state.data, incoming);
-      if (replacement) throw new Error(replacement);
+      if (issue) throw new Error(issue === 'excluded'
+        ? 'IBKR excluded accounts; previous history retained. Retry later.'
+        : 'IBKR daily report is not yet current; previous history retained. Scheduled retry remains available.');
+      reportText = mergeFlexHistory(state.reportText, reportText);
     } catch (error) {
       state.flexStatus = String(error.message || error);
       state.cacheStatus = flexRefreshFailureStatus(state.flexStatus);
@@ -3354,6 +3354,22 @@ function requestFlexReport({ background = false } = {}) {
     const sourceName = `ibkr-flex-${message.referenceCode || "report"}.csv`;
     const reportFingerprint = fingerprintReportText(reportText);
 
+    // Commit the accumulated archive before acknowledging a successful refresh.
+    state.backgroundRefreshBusy = true;
+    let saved = false;
+    try {
+      saved = await writeCachedFlexReport({ text: reportText, sourceName, fetchedAt,
+        queryId: state.flexQueryId.trim(), referenceCode: message.referenceCode || "",
+        fingerprint: reportFingerprint });
+    } catch { /* Keep the last usable report if local storage fails. */ }
+    state.backgroundRefreshBusy = false;
+    if (!saved) {
+      state.flexStatus = "Could not save report history locally. Previous history retained. Retry after checking available storage.";
+      state.cacheStatus = flexRefreshFailureStatus(state.flexStatus);
+      if (state.data) updateFlexRefreshUi(); else renderUpload();
+      return;
+    }
+
     if (state.data && state.reportFingerprint === reportFingerprint) {
       recordFlexSchedule("succeeded", scheduleDay, scheduleKey);
       state.flexStatus = "IBKR Flex report is already current.";
@@ -3361,14 +3377,6 @@ function requestFlexReport({ background = false } = {}) {
       state.cacheStatus = background ? `报表已是最新 ${formatDateTime(fetchedAt)}` : `已是最新 ${formatDateTime(fetchedAt)}`;
       updateFlexRefreshUi();
       fetchBenchmark(state.data);
-      await writeCachedFlexReport({
-        text: reportText,
-        sourceName,
-        fetchedAt,
-        queryId: state.flexQueryId.trim(),
-        referenceCode: message.referenceCode || "",
-        fingerprint: reportFingerprint
-      });
       return;
     }
 
@@ -3384,14 +3392,8 @@ function requestFlexReport({ background = false } = {}) {
     if (parsed) {
       recordFlexSchedule("succeeded", scheduleDay, scheduleKey);
       state.cacheLoadedAt = fetchedAt;
-      await writeCachedFlexReport({
-        text: reportText,
-        sourceName,
-        fetchedAt,
-        queryId: state.flexQueryId.trim(),
-        referenceCode: message.referenceCode || "",
-        fingerprint: reportFingerprint
-      });
+      state.flexStatus = "IBKR Flex report updated; saved history retained.";
+      updateFlexRefreshUi();
     }
   };
 
@@ -3565,6 +3567,7 @@ function parseText(text, sourceName, options = {}) {
       if (issue) throw new Error(issue);
     }
     state.data = parsed;
+    state.reportText = cleanText;
     state.sourceName = sourceName || "";
     state.reportFingerprint = fingerprintReportText(cleanText);
     state.search = options.preserveView ? previousSearch : "";
@@ -3595,6 +3598,7 @@ function resetReport() {
   window.clearTimeout(benchmarkRefreshTimer);
   benchmarkRequestId++;
   state.data = null;
+  state.reportText = "";
   state.error = "";
   state.search = "";
   state.sourceName = "";

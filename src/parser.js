@@ -748,7 +748,7 @@ function displayFlexDate(value) {
   return date ? dateKey(date) : (value || "");
 }
 
-function splitCsvRows(text) {
+export function splitCsvRows(text) {
   const rows = [];
   let row = "";
   let inQuotes = false;
