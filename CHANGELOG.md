@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.2.24
+
+Reliable Flex refresh with accumulated local history.
+
+- Keep Flex requests within a 365-day window to avoid IBKR error 1023.
+- Retain earlier trades, daily NAV, returns and dated report records when refreshing the recent window.
+- Use current position snapshots without restoring closed positions from old reports.
+- Reject missing accounts, missing overlapping trades or daily history, and gaps in report coverage.
+- Save the accumulated history before reporting success; retain the current report if local storage fails.
+- Verify rolling-year retention, repeated refreshes, schema changes and restoration after relaunch.
+
 ## v2.2.22
 
 Faster local review and startup refresh checks.
