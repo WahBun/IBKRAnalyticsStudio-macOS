@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.2.25
+
+The daily P&L calendar now follows the trading dates in the IBKR Flex report.
+
+- View Monday through Friday and open any covered weekday, including days with no activity.
+- See a dash on empty days or when realized P&L is unavailable. A reported breakeven result displays as zero.
+- Review overnight trades on the broker's trade date while keeping the original fill time in the trade table. Overlapping Flex refreshes use that same trade date to retain a single record.
+
 ## v2.2.24
 
 Reliable Flex refresh with accumulated local history.
