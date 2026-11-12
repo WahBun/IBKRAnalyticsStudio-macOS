@@ -35,7 +35,7 @@ export function reportReplacementIssue(previous, incoming) {
     const result = new Map();
     for (const row of rows || []) {
       if (row.date < start || row.date > end) continue;
-      const key = JSON.stringify([row.account || "", row.date, contractKey(row.symbol), row.currency, row.side]);
+      const key = JSON.stringify([row.account || "", row.fillDate || row.date, contractKey(row.symbol), row.currency, row.side]);
       result.set(key, (result.get(key) || 0) + 1);
     }
     return result;

@@ -42,6 +42,27 @@ const duplicateTrades = old.replace('DATA,TRNT,TEST-A,STK,AAA,20251020,1,10,-10,
 assert.equal(parseIbkrReport(mergeFlexHistory(duplicateTrades,next)).tradeDetails.length,5);
 console.log('Rolling history, multi-year persistence, retries, snapshot removal, overlap corrections, schema changes and fail-closed integrity passed.');
 
+// A Friday evening fill belongs to the following Monday's Flex report period.
+const forex = 'DATA,TRNT,TEST-A,CASH,EUR.USD,20261102,1,1.1,-1.1,ORDER,,20261030;180000,8';
+function fridayFillReport(start, end, days) {
+  return report(start, end, days)
+    .replace('TradePrice,Proceeds,LevelOfDetail,Model', 'TradePrice,Proceeds,LevelOfDetail,Model,DateTime,FifoPnlRealized')
+    .replace('BOS,POST', forex + '\nBOS,POST');
+}
+const october = fridayFillReport('20261028', '20261102', ['20261030', '20261102']);
+const november = fridayFillReport('20261102', '20261103', ['20261102', '20261103']);
+const mergedWeekend = parseIbkrReport(mergeFlexHistory(october, november));
+const fx = mergedWeekend.tradeDetails.filter(row => row.symbol === 'EUR.USD');
+assert.equal(fx.length, 1);
+assert.equal(fx[0].date, '2026-11-02');
+assert.equal(fx[0].fillDate, '2026-10-30');
+assert.equal(fx[0].month, '2026-11');
+assert.equal(fx[0].realizedPL, 8);
+assert.equal(mergedWeekend.tradeDetails.find(row => row.symbol === 'AAA').realizedPL, null);
+assert.equal(mergedWeekend.dailyTradeStats.find(row => row.date === '2026-11-02').realizedPL, null);
+assert.throws(() => mergeFlexHistory(october, november.replace(forex, '')), /omits 1/);
+console.log('Overnight FX retains one booking on Monday with its original fill time and missing P&L stays unknown.');
+
 // Exercise the actual refresh callback, including durable-save failure and relaunch.
 const { default: fs } = await import('node:fs');
 const { default: vm } = await import('node:vm');

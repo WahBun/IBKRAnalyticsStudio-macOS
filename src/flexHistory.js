@@ -30,7 +30,7 @@ function historyDate(record) {
   const { code, name, data: row } = record;
   const fields = {
     EQUT: ['ReportDate'], CNAV: ['ToDate'], FIFO: ['ReportDate'],
-    TRNT: ['DateTime', 'TradeDate', 'ReportDate'], FXTR: ['DateTime', 'ReportDate'],
+    TRNT: ['TradeDate', 'DateTime', 'ReportDate'], FXTR: ['DateTime', 'ReportDate'],
     TIER: ['ValueDate', 'ReportDate'], TRTX: ['Date', 'ReportDate']
   };
   let keys = fields[code];

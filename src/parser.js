@@ -571,11 +571,12 @@ function flexTradeRow(row) {
     Currency: row.CurrencyPrimary || "",
     Symbol: row.Symbol || "",
     "Date/Time": row.DateTime || row.TradeDate || row.ReportDate || "",
+    TradeDate: row.TradeDate || "",
     Quantity: row.Quantity || "0",
     "T. Price": row.TradePrice || "0",
     Proceeds: row.Proceeds || row.TradeMoney || "0",
     "Comm/Fee": row.IBCommission || "0",
-    "Realized P/L": row.FifoPnlRealized || "0",
+    "Realized P/L": row.FifoPnlRealized || "",
     "MTM P/L": row.MtmPnl || "0",
     Code: row["Notes/Codes"] || row.Code || ""
   };
@@ -1287,6 +1288,15 @@ function applyPositionDividends(positions, dividendBySymbol) {
   });
 }
 
+function tradeDay(row) {
+  return parseDate(row.TradeDate || row["Date/Time"]);
+}
+
+function dailyRealizedPL(row, rate) {
+  const amount = reportNumber(row["Realized P/L"]);
+  return amount === null ? null : amount * rate;
+}
+
 function analyzeTrades(rows = [], exchangeRates) {
   const orderTrades = rows.filter((row) => row.DataDiscriminator === "Order");
   let totalCommissions = 0;
@@ -1299,7 +1309,7 @@ function analyzeTrades(rows = [], exchangeRates) {
   const topRealizedTrades = [];
 
   for (const row of orderTrades) {
-    const date = parseDate(row["Date/Time"]);
+    const date = tradeDay(row);
     if (date) dates.push(date);
 
     const category = row["Asset Category"];
@@ -1349,20 +1359,22 @@ function parseTradeDetails(rows = [], exchangeRates) {
   return (rows || [])
     .filter((row) => row.DataDiscriminator === "Order")
     .map((row) => {
-      const date = parseDate(row["Date/Time"]);
+      const date = tradeDay(row);
+      const fillTime = parseDate(row["Date/Time"]);
       const currency = row.Currency || "USD";
       const rate = exchangeRates[currency] || 1;
       const quantity = toNumber(row.Quantity);
       const price = toNumber(row["T. Price"]);
       const proceeds = toNumber(row.Proceeds) * rate;
       const commission = toNumber(readCommission(row)) * rate;
-      const realizedPL = toNumber(row["Realized P/L"]) * rate;
+      const realizedPL = dailyRealizedPL(row, rate);
       const mtmPL = toNumber(row["MTM P/L"]) * rate;
 
       return {
         account: row.Account || "",
         date: date ? dateKey(date) : "",
-        dateTime: date ? date.toISOString() : "",
+        dateTime: fillTime ? fillTime.toISOString() : "",
+        fillDate: fillTime ? dateKey(fillTime) : "",
         month: date ? monthKey(date) : "",
         symbol: row.Symbol || "",
         baseSymbol: parseOptionSymbol(row.Symbol || "").baseSymbol || row.Symbol || "",
@@ -1406,7 +1418,7 @@ function analyzeDailyTrades(rows = [], exchangeRates) {
   for (const trade of rows || []) {
     if (trade.DataDiscriminator !== "Order") continue;
 
-    const date = parseDate(trade["Date/Time"]);
+    const date = tradeDay(trade);
     if (!date) continue;
 
     const currency = trade.Currency || "USD";
@@ -1415,7 +1427,8 @@ function analyzeDailyTrades(rows = [], exchangeRates) {
     const symbol = trade.Symbol || "";
 
     row.tradeCount += 1;
-    row.realizedPL += toNumber(trade["Realized P/L"]) * rate;
+    const realized = dailyRealizedPL(trade, rate);
+    row.realizedPL = row.realizedPL === null || realized === null ? null : row.realizedPL + realized;
     row.mtmPL += toNumber(trade["MTM P/L"]) * rate;
     row.grossTradeValue += Math.abs(toNumber(trade.Proceeds) * rate);
     row.commissions += Math.abs(toNumber(readCommission(trade)) * rate);
@@ -1455,7 +1468,7 @@ function analyzeMonthlySummary(sections, exchangeRates) {
   for (const trade of sections.Trades || []) {
     if (trade.DataDiscriminator !== "Order") continue;
 
-    const date = parseDate(trade["Date/Time"]);
+    const date = tradeDay(trade);
     if (!date) continue;
 
     const row = ensureMonth(date);
@@ -1662,14 +1675,18 @@ function isUsableNavAmount(value) {
 }
 
 function toNumber(value) {
-  if (value === undefined || value === null) return 0;
+  return reportNumber(value) ?? 0;
+}
+
+function reportNumber(value) {
+  if (value === undefined || value === null) return null;
   const raw = String(value).trim();
-  if (!raw || raw === "--") return 0;
+  if (!raw || raw === "--") return null;
 
   const negative = raw.startsWith("(") && raw.endsWith(")");
   const cleaned = raw.replace(/[,$%\s()]/g, "");
   const number = Number.parseFloat(cleaned);
-  if (Number.isNaN(number)) return 0;
+  if (!Number.isFinite(number)) return null;
   return negative ? -number : number;
 }
 
