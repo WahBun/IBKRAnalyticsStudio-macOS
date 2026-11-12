@@ -1217,10 +1217,18 @@ function dailyView(data) {
   const statsByMonth = groupMonths(visibleRows);
   const tradesByMonth = groupMonths(visibleTradeRows);
   const allTradesByMonth = isFiltered ? groupMonths(allTradeRows) : tradesByMonth;
-  const allMonths = Array.from(new Set(rows.map(row => row.month))).sort();
+  const allMonths = new Set(rows.map(row => row.month));
+  const scope = data.reportScope;
+  if (scope?.start && scope.end) {
+    const month = new Date(scope.start.slice(0, 7) + "-01T00:00:00Z");
+    const end = new Date(scope.end.slice(0, 7) + "-01T00:00:00Z");
+    for (; month <= end; month.setUTCMonth(month.getUTCMonth() + 1)) {
+      allMonths.add(month.toISOString().slice(0, 7));
+    }
+  }
   const visibleMonths = [...statsByMonth.keys()].sort();
   const result = { key, isFiltered, statsByMonth, tradesByMonth, allTradesByMonth,
-    months: isFiltered && visibleMonths.length ? visibleMonths : allMonths };
+    months: isFiltered && visibleMonths.length ? visibleMonths : [...allMonths].sort() };
   dailyViewCache.set(data, result);
   return result;
 }
@@ -1231,7 +1239,9 @@ function renderDailyStats(data) {
   const selectedMonth = months.includes(state.dailyMonth) ? state.dailyMonth : months.at(-1) || "";
   const monthRows = statsByMonth.get(selectedMonth) || [];
   const monthlyTradeRows = tradesByMonth.get(selectedMonth) || [];
-  const selectedDate = monthlyTradeRows.some((row) => row.date === state.dailySelectedDate) ? state.dailySelectedDate : "";
+  const selection = state.dailySelectedDate;
+  const selectedDate = selectedMonth && selection.startsWith(selectedMonth + "-") &&
+    (inReportPeriod(selection, data.reportScope) || monthlyTradeRows.some(row => row.date === selection)) ? selection : "";
   const tradeRows = selectedDate ? monthlyTradeRows.filter((row) => row.date === selectedDate) : monthlyTradeRows;
   const sortedTradeRows = sortDailyTradeRows(tradeRows);
   const unfilteredMonthlyTradeRows = allTradesByMonth.get(selectedMonth) || [];
@@ -1244,7 +1254,8 @@ function renderDailyStats(data) {
     : isFiltered ? "当前搜索没有匹配的交易记录。" : "当前月份没有交易记录。";
   const totalTrades = monthRows.reduce((sum, row) => sum + row.tradeCount, 0);
   const totalGross = monthRows.reduce((sum, row) => sum + row.grossTradeValue, 0);
-  const totalRealized = monthRows.reduce((sum, row) => sum + row.realizedPL, 0);
+  const totalRealized = monthRows.every(row => Number.isFinite(row.realizedPL))
+    ? monthRows.reduce((sum, row) => sum + row.realizedPL, 0) : null;
   const daysInMonth = selectedMonth ? getDaysInMonth(selectedMonth) : 0;
   const averageTrades = daysInMonth ? totalTrades / daysInMonth : 0;
 
@@ -1262,7 +1273,7 @@ function renderDailyStats(data) {
       <div class="grid-12">
         <section class="dashboard-card span-7 daily-calendar-card">
           <div class="card-header"><h2>盈亏日历</h2><span class="pill">${escapeHtml(selectedMonth || "-")}</span></div>
-          ${renderProfitCalendar(monthRows, selectedMonth, currency, selectedDate)}
+          ${renderProfitCalendar(monthRows, selectedMonth, currency, selectedDate, data.reportScope)}
         </section>
         <section class="dashboard-card span-5 daily-trades-card">
           <div class="card-header"><h2>每日交易统计</h2><span class="pill">${formatNumber(totalTrades)} trades</span></div>
@@ -1271,7 +1282,7 @@ function renderDailyStats(data) {
             ${renderDailyStat("总交易笔数", formatNumber(totalTrades))}
             ${renderDailyStat("总成交额", formatMoney(totalGross, currency))}
             ${renderDailyStat("日均交易", formatNumber(averageTrades, 1))}
-            ${renderDailyStat("已实现盈亏", signedMoney(totalRealized, currency), totalRealized)}
+            ${renderDailyStat("已实现盈亏", totalRealized === null ? "—" : signedMoney(totalRealized, currency), totalRealized)}
           </div>
         </section>
         <section class="table-card span-12">
@@ -1593,35 +1604,42 @@ function renderPositionAssetPie(positions, currency, cash = 0, options = {}) {
   });
 }
 
-function renderProfitCalendar(rows, month, currency, selectedDate = "") {
+function inReportPeriod(date, scope) {
+  return Boolean(scope?.start && scope.end && date >= scope.start && date <= scope.end);
+}
+
+function renderProfitCalendar(rows, month, currency, selectedDate, scope) {
   if (!month) return renderEmpty("暂无逐日交易数据。");
 
   const [year, monthNumber] = month.split("-").map(Number);
   const daysInMonth = getDaysInMonth(month);
-  const firstDay = new Date(year, monthNumber - 1, 1).getDay();
+  const firstColumn = (new Date(year, monthNumber - 1, 1).getDay() + 6) % 7;
   const byDay = new Map(rows.map((row) => [row.day, row]));
   const maxAbs = Math.max(1, ...rows.map((row) => Math.abs(row.realizedPL)));
   const cells = [];
 
-  for (let i = 0; i < firstDay; i += 1) {
+  const leadingBlanks = firstColumn < 5 ? firstColumn : 0;
+  for (let i = 0; i < leadingBlanks; i += 1) {
     cells.push(`<div class="calendar-cell is-empty" aria-hidden="true"></div>`);
   }
 
   for (let day = 1; day <= daysInMonth; day += 1) {
+    if ((firstColumn + day - 1) % 7 >= 5) continue;
     const row = byDay.get(day);
     const date = `${month}-${String(day).padStart(2, "0")}`;
-    const value = row?.realizedPL || 0;
-    const intensity = row ? Math.min(0.78, 0.16 + Math.abs(value) / maxAbs * 0.52) : 0;
+    const value = row?.realizedPL;
+    const intensity = Number.isFinite(value) ? Math.min(0.78, 0.16 + Math.abs(value) / maxAbs * 0.52) : 0;
     const tone = value > 0 ? "is-positive" : value < 0 ? "is-negative" : "";
-    const hasTrades = Boolean(row && row.tradeCount > 0);
+    const covered = Boolean(row) || inReportPeriod(date, scope);
     const isSelected = selectedDate === date;
-    const cellClass = ["calendar-cell", tone, hasTrades ? "is-clickable" : "", isSelected ? "is-selected" : ""].filter(Boolean).join(" ");
-    const title = `${date}: ${signedMoney(value, currency)} · ${formatNumber(row?.tradeCount || 0)} trades`;
+    const cellClass = ["calendar-cell", tone, covered ? "is-clickable" : "", isSelected ? "is-selected" : ""].filter(Boolean).join(" ");
+    const amount = Number.isFinite(value) ? signedMoney(value, currency) : "—";
+    const title = covered ? `${date}: ${amount} · ${formatNumber(row?.tradeCount || 0)} trades` : `${date}: Outside report coverage`;
     const content = `
       <span class="calendar-day">${day}</span>
-      ${row ? `<strong class="${valueClass(value)}">${signedCalendarAmount(value)}</strong>` : ""}
+      <strong class="${valueClass(value)}">${Number.isFinite(value) ? signedCalendarAmount(value) : "—"}</strong>
     `;
-    if (!hasTrades) {
+    if (!covered) {
       cells.push(`
         <div class="${cellClass}" style="--heat-alpha:${intensity.toFixed(2)}" title="${escapeAttribute(title)}">
           ${content}
@@ -1637,13 +1655,13 @@ function renderProfitCalendar(rows, month, currency, selectedDate = "") {
     `);
   }
 
-  while (cells.length % 7 !== 0) {
+  while (cells.length % 5 !== 0) {
     cells.push(`<div class="calendar-cell is-empty" aria-hidden="true"></div>`);
   }
 
   return `
     <div class="calendar-weekdays">
-      ${["日", "一", "二", "三", "四", "五", "六"].map((day) => `<span>${day}</span>`).join("")}
+      ${["Mon", "Tue", "Wed", "Thu", "Fri"].map((day) => `<span>${day}</span>`).join("")}
     </div>
     <div class="profit-calendar">
       ${cells.join("")}
@@ -1735,7 +1753,7 @@ function renderDailyTradeTable(rows, currency, emptyMessage = "当前月份没�
     formatMoney(row.price, row.currency || currency),
     formatMoney(row.grossValue, currency),
     formatMoney(row.commission, currency),
-    `<span class="${valueClass(row.realizedPL)}">${signedMoney(row.realizedPL, currency)}</span>`
+    `<span class="${valueClass(row.realizedPL)}">${Number.isFinite(row.realizedPL) ? signedMoney(row.realizedPL, currency) : "—"}</span>`
   ]);
   return renderSimpleTable(["成交时间", "股票代码", "方向", "资产", "数量", "成交价", "成交金额", "佣金", "已实现盈亏"], tableRows, [false, false, false, false, true, true, true, true, true], true, "daily-trade-table");
 }
@@ -4825,7 +4843,7 @@ function summarizeDailyTradeRows(rows) {
 
     const row = daily.get(key);
     row.tradeCount += 1;
-    row.realizedPL += trade.realizedPL || 0;
+    row.realizedPL = row.realizedPL === null || !Number.isFinite(trade.realizedPL) ? null : row.realizedPL + trade.realizedPL;
     row.mtmPL += trade.mtmPL || 0;
     row.grossTradeValue += trade.grossValue || 0;
     row.commissions += Math.abs(trade.commission || 0);

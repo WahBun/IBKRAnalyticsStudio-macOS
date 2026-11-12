@@ -1517,7 +1517,7 @@ html[data-theme="dark"] .refresh-action-button:hover {
 
 .calendar-weekdays {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
   margin-bottom: 8px;
   color: var(--muted);
@@ -1528,7 +1528,7 @@ html[data-theme="dark"] .refresh-action-button:hover {
 
 .profit-calendar {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
 }
 
