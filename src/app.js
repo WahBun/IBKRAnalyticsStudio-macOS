@@ -1,6 +1,6 @@
-import { decodeReportFile } from "./encoding.js?v=2.2.25";
-import { isChineseIbkrReport } from "./reportLanguage.js?v=2.2.25";
-import { parseIbkrReport } from "./parser.js?v=2.2.25";
+import { decodeReportFile } from "./encoding.js?v=2.3.0";
+import { isChineseIbkrReport } from "./reportLanguage.js?v=2.3.0";
+import { parseIbkrReport } from "./parser.js?v=2.3.0";
 import { automaticRefreshDay, easternDay, refreshWindow } from "./refreshSchedule.js";
 import { reportReplacementIssue } from "./reportIntegrity.js";
 import { mergeFlexHistory } from "./flexHistory.js";
@@ -373,6 +373,7 @@ const icons = {
   close: '<path d="M18 6 6 18" /><path d="m6 6 12 12" />',
   eye: '<path d="M2.1 12s3.7-6 9.9-6 9.9 6 9.9 6-3.7 6-9.9 6-9.9-6-9.9-6Z" /><circle cx="12" cy="12" r="3" />',
   eyeOff: '<path d="M3 3l18 18" /><path d="M10.6 10.6A3 3 0 0 0 12 15a3 3 0 0 0 2.1-.9" /><path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c6.2 0 9.9 7 9.9 7a17.6 17.6 0 0 1-2.1 2.8" /><path d="M6.6 6.7C3.7 8.6 2.1 12 2.1 12s3.7 7 9.9 7a9.7 9.7 0 0 0 4.2-.9" />',
+  back: '<path d="m9 5-6 6 6 6" /><path d="M3 11h9a9 9 0 0 1 9 9" />',
   arrowUp: '<path d="M12 19V5" /><path d="m6 11 6-6 6 6" />',
   arrowDown: '<path d="M12 5v14" /><path d="m6 13 6 6 6-6" />'
 };
@@ -383,10 +384,10 @@ const SHARE_IMAGE_SIZES = {
   portrait: { width: 1080, height: 1728 }
 };
 
-const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.2.25";
-const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.2.25";
-const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.2.25";
-const PORTFOLIO_SHARE_BACKGROUND_SRC = "./assets/portfolio-share-background.png?v=2.2.25";
+const SHARE_LOGO_SRC = "./assets/app-logo.png?v=2.3.0";
+const PORTFOLIO_CENTER_DARK_SRC = "./assets/price-action-center-dark.png?v=2.3.0";
+const PORTFOLIO_CENTER_LIGHT_SRC = "./assets/price-action-center-light.png?v=2.3.0";
+const PORTFOLIO_SHARE_BACKGROUND_SRC = "./assets/portfolio-share-background.png?v=2.3.0";
 const SHARE_IMAGE_COLORS = ["#e31937", "#5f6368", "#a41124", "#2b2f35", "#f15b61", "#878d96"];
 const PIE_COLORS = ["#38bdf8", "#2dd4bf", "#60a5fa", "#22d3ee", "#14b8a6", "#0ea5e9"];
 const POSITION_PIE_COLORS = ["#38bdf8", "#2dd4bf", "#8b5cf6", "#f59e0b", "#ef4444", "#22c55e", "#06b6d4", "#60a5fa"];
@@ -397,7 +398,7 @@ const FLEX_CACHE_DB_NAME = "ibkr-analytics-cache";
 const FLEX_CACHE_STORE_NAME = "reports";
 const FLEX_CACHE_KEY = "latest-flex-report";
 const BENCHMARK_PROXY_URL = "https://sp500-proxy.3368517784.workers.dev";
-const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.2.25";
+const LOCAL_SP500_BENCHMARK_URL = "./assets/benchmarks/sp500.json?v=2.3.0";
 const BENCHMARK_FETCH_TIMEOUT_MS = 5500;
 const BENCHMARK_STORAGE_KEY = "ibkr-return-benchmark-v2";
 const POSITION_AMOUNTS_HIDDEN_STORAGE_KEY = "ibkr-position-amounts-hidden";
@@ -407,7 +408,7 @@ const BENCHMARK_OPTIONS = {
   nq100: { id: "nq100", label: "NQ100", shortLabel: "NQ100", color: "#d79a19" },
   both: { id: "both", label: "SPX vs NQ100", shortLabel: "SPX vs NQ100" }
 };
-const APP_VERSION = "2.2.25";
+const APP_VERSION = "2.3.0";
 const UPDATE_CHECK_STORAGE_KEY = "ibkr-analytics-update-checked-at";
 const DEFAULT_REPORT_TAB = "daily";
 
@@ -454,6 +455,10 @@ const state = {
   search: "",
   sourceName: "",
   dailyMonth: "",
+  dailyYear: "",
+  dailyScope: "month",
+  dailyCurrency: "",
+  dailyParents: [],
   dailySelectedDate: "",
   dailyTradeSort: "desc",
   flexToken: normalizeFlexToken(localStorage.getItem(FLEX_TOKEN_STORAGE_KEY)),
@@ -1014,7 +1019,7 @@ function renderBrand(title, subtitle) {
   return `
     <a class="brand" href="./index.html" aria-label="${escapeAttribute(title)}">
       <span class="brand-mark" aria-hidden="true">
-        <img src="./assets/app-logo.png?v=2.2.25" alt="" />
+        <img src="./assets/app-logo.png?v=2.3.0" alt="" />
       </span>
       <span class="brand-copy">
         <span class="brand-title">${escapeHtml(title)}</span>
@@ -1198,15 +1203,23 @@ function renderPerformance(data) {
 }
 
 function dailyView(data) {
-  const key = `${document.documentElement.lang}:${state.search.trim().toLowerCase()}`;
+  const currentMonth = easternDay().date.slice(0, 7);
+  const key = JSON.stringify([document.documentElement.lang, state.search.trim().toLowerCase(), state.dailyCurrency, currentMonth]);
   const cached = dailyViewCache.get(data);
   if (cached?.key === key) return cached;
-  const allTradeRows = data.tradeDetails || [];
+  const source = data.tradeDetails || [];
+  const currencies = cached?.currencies || [...new Set(source.map(row => row.currency))].sort();
+  const currency = currencies.includes(state.dailyCurrency) ? state.dailyCurrency : "";
   const isFiltered = Boolean(state.search.trim());
-  const visibleTradeRows = isFiltered ? allTradeRows.filter(dailyTradeSearchMatch) : allTradeRows;
-  const rows = data.dailyTradeStats || [];
-  const visibleRows = isFiltered ? summarizeDailyTradeRows(visibleTradeRows) : rows;
-  const groupMonths = (items) => {
+  const trades = cached?.currency === currency ? cached.trades : source.filter(row => !currency || row.currency === currency).map(row => {
+    const rate = currency ? 1 : row.reviewRate;
+    const realizedPL = Number.isFinite(row.localRealized) && (rate > 0 || row.localRealized === 0)
+      ? row.localRealized * rate : null;
+    return { ...row, realizedPL, grossValue: rate > 0 ? row.localGross * rate : null };
+  });
+  const visible = isFiltered ? trades.filter(dailyTradeSearchMatch) : trades;
+  const rows = summarizeDailyTradeRows(visible);
+  const groupMonths = items => {
     const groups = new Map();
     for (const row of items) {
       if (!groups.has(row.month)) groups.set(row.month, []);
@@ -1214,34 +1227,143 @@ function dailyView(data) {
     }
     return groups;
   };
-  const statsByMonth = groupMonths(visibleRows);
-  const tradesByMonth = groupMonths(visibleTradeRows);
-  const allTradesByMonth = isFiltered ? groupMonths(allTradeRows) : tradesByMonth;
-  const allMonths = new Set(rows.map(row => row.month));
-  const scope = data.reportScope;
-  if (scope?.start && scope.end) {
-    const month = new Date(scope.start.slice(0, 7) + "-01T00:00:00Z");
-    const end = new Date(scope.end.slice(0, 7) + "-01T00:00:00Z");
-    for (; month <= end; month.setUTCMonth(month.getUTCMonth() + 1)) {
-      allMonths.add(month.toISOString().slice(0, 7));
+  const coverage = data.reviewCoverage || [];
+  const coveredMonths = new Set(source.map(row => row.month));
+  for (const range of coverage) {
+    const month = new Date(range.start.slice(0, 7) + "-01T00:00:00Z");
+    const end = range.end.slice(0, 7);
+    for (; month.toISOString().slice(0, 7) <= end; month.setUTCMonth(month.getUTCMonth() + 1)) {
+      coveredMonths.add(month.toISOString().slice(0, 7));
     }
   }
-  const visibleMonths = [...statsByMonth.keys()].sort();
-  const result = { key, isFiltered, statsByMonth, tradesByMonth, allTradesByMonth,
-    months: isFiltered && visibleMonths.length ? visibleMonths : [...allMonths].sort() };
+  const months = [...new Set([...coveredMonths, currentMonth])].sort();
+  const tradesByMonth = groupMonths(visible);
+  const result = { key, isFiltered, months, coveredMonths, currentMonth, coverage, currency, currencies, trades,
+    statsByMonth: groupMonths(rows), tradesByMonth, allTradesByMonth: isFiltered ? groupMonths(trades) : tradesByMonth };
   dailyViewCache.set(data, result);
   return result;
 }
 
+function renderReviewToolbar(data, view, months, month, years, year, showBack) {
+  const scope = state.dailyScope;
+  const monthForYear = scope === "month" || month.startsWith(year) ? month : view.months.filter(key => key.startsWith(year)).at(-1);
+  const picker = (id, name, choices, selected, attributes = "") => {
+    const label = choices.find(([key]) => key === selected)?.[1] || "";
+    return `<span class="review-picker">
+      <span class="review-picker-size" aria-hidden="true">${escapeHtml(label)}</span>
+      <select id="${id}" aria-label="${name}" ${attributes}>
+        ${choices.map(([key, text]) => `<option value="${escapeAttribute(key)}"${key === selected ? " selected" : ""}>${escapeHtml(text)}</option>`).join("")}
+      </select>
+    </span>`;
+  };
+  const scopeOptions = [["month", "Month"], ["year", "Year"], ["all", "All time"]];
+  const scopeDates = `data-month="${monthForYear || month}" data-year="${scope === "month" ? month.slice(0, 4) : year}"`;
+  const currencyOptions = [["", `Report total (${data.baseCurrency})`], ...view.currencies.map(key => [key, key])];
+  return `<div class="daily-toolbar">
+    ${showBack ? `<button class="icon-button review-back" id="reviewBack" type="button" aria-label="Back" title="Back">${icon("back")}</button>` : ""}
+    ${view.currencies.length > 1 ? picker("reviewCurrency", "P&amp;L currency", currencyOptions, view.currency) : ""}
+    ${picker("reviewScope", "Review period", scopeOptions, scope, scopeDates)}
+    ${scope === "month" ? picker("dailyMonthSelect", "Selected month", months.map(key => [key, formatMonthLabel(key)]), month) : ""}
+    ${scope === "year" ? picker("reviewYear", "Selected year", years.map(key => [key, key]), year) : ""}
+  </div>`;
+}
+
+function sumReported(rows, field) {
+  let sum = 0;
+  for (const row of rows) {
+    if (!Number.isFinite(row[field])) return null;
+    sum += row[field];
+  }
+  return sum;
+}
+
+function renderPeriodReview(data, view, year, currency, toolbar) {
+  const annual = state.dailyScope === "year";
+  const matches = key => !annual || key.startsWith(year + "-");
+  const months = [...view.coveredMonths].filter(matches).sort();
+  const periodTrades = months.flatMap(key => view.tradesByMonth.get(key) || []);
+  const buckets = new Map(), symbols = new Map(), fees = new Map();
+  function add(group, key, trade) {
+    if (!group.has(key)) group.set(key, []);
+    group.get(key).push(trade);
+  }
+  for (const trade of periodTrades) {
+    add(buckets, annual ? trade.month : trade.month.slice(0, 4), trade);
+    add(symbols, trade.baseSymbol || trade.symbol || "Unknown", trade);
+  }
+  for (const trade of data.tradeDetails || []) {
+    if (matches(trade.month)) add(fees, trade.feeCurrency, trade);
+  }
+  const keys = annual ? Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, "0")}`)
+    : [...new Set(months.map(key => key.slice(0, 4)))].reverse();
+  const cells = keys.map(key => {
+    const trades = buckets.get(key) || [];
+    const amount = trades.length ? sumReported(trades, "realizedPL") : null;
+    const covered = !annual || view.coveredMonths.has(key);
+    const label = annual ? cachedFormatter("DateTimeFormat", "en", { month: "short", timeZone: "UTC" }).format(new Date(key + "-01T00:00:00Z")) : key;
+    const tone = amount > 0 ? "is-positive" : amount < 0 ? "is-negative" : "";
+    return `<button type="button" class="calendar-cell ${tone} ${covered ? "is-clickable" : ""}" style="--heat-alpha:0.18"
+      ${covered ? `data-review-period="${key}"` : "disabled"} title="${key} · ${Number.isFinite(amount) ? signedMoney(amount, currency) : "—"}">
+      <span class="calendar-day">${label}</span><strong class="${valueClass(amount)}">${Number.isFinite(amount) ? signedCalendarAmount(amount) : "—"}</strong></button>`;
+  });
+  const ranges = view.coverage.map(({ start, end }) => ({
+    start: annual && start < year + "-01-01" ? year + "-01-01" : start,
+    end: annual && end > year + "-12-31" ? year + "-12-31" : end
+  })).filter(range => range.start <= range.end);
+  const contributions = [...symbols].map(([symbol, trades]) => ({ symbol, amount: sumReported(trades, "realizedPL") }))
+    .sort((a, b) => (a.amount === null) - (b.amount === null) || Math.abs(b.amount) - Math.abs(a.amount) || a.symbol.localeCompare(b.symbol));
+  const total = periodTrades.length || ranges.length ? sumReported(periodTrades, "realizedPL") : null;
+  const feeRows = [...fees].sort(([a], [b]) => a.localeCompare(b)).map(([ccy, trades]) => {
+    const amount = sumReported(trades, "reportedFee");
+    return [escapeHtml(ccy || "Unspecified"), amount === null || !ccy ? "—" : formatMoney(-amount, ccy)];
+  });
+  return `<div class="content-stack">
+    ${renderPageHeading(t("dailyHeading"), data, annual ? "Review realized P&L by month." : "Review realized P&L by year.")}
+    ${toolbar}
+    <div class="grid-12">
+      <section class="dashboard-card span-7">
+        <div class="card-header"><h2>${annual ? "Monthly P&L" : "Yearly P&L"}</h2><span class="pill">${annual ? year : "All time"}</span></div>
+        <div class="review-period-grid">${cells.join("")}</div>
+        ${ranges.map(range => `<p class="card-kicker">Reported ${range.start} – ${range.end}</p>`).join("") || '<p class="card-kicker">No reported coverage for this period.</p>'}
+        ${!annual && data.reportScope?.accountIds.length === 1 && /^\d{4}-\d{2}-\d{2}$/.test(data.accountInfo.opened) ? `<p class="card-kicker">Account opened ${data.accountInfo.opened}</p>` : ""}
+      </section>
+      <section class="dashboard-card span-5">
+        <div class="card-header"><h2>Period summary</h2></div>
+        <div class="daily-stat-grid">
+          ${renderDailyStat("Realized P&L", total === null ? "—" : signedMoney(total, currency), total)}
+          ${renderDailyStat("Trades", formatNumber(periodTrades.length))}
+        </div>
+        <h3>${annual ? "Annual commissions" : "Total commissions"}</h3>
+        ${feeRows.length ? renderSimpleTable(["Fee currency", "Net cost"], feeRows, [false, true], true) : renderEmpty("No reported commissions.")}
+      </section>
+      <section class="table-card span-12">
+        <div class="table-header"><h2>Symbol contributions</h2><span class="pill">${escapeHtml(currency)}</span></div>
+        ${contributions.length ? renderSimpleTable(["Symbol", "Realized P&L"], contributions.map(({ symbol, amount }) => [
+          escapeHtml(symbol), `<span class="${valueClass(amount)}">${amount === null ? "—" : signedMoney(amount, currency)}</span>`
+        ]), [false, true], true) : renderEmpty("No matching trades in this period.")}
+      </section>
+    </div>
+  </div>`;
+}
+
 function renderDailyStats(data) {
-  const currency = data.baseCurrency || "USD";
-  const { isFiltered, months, statsByMonth, tradesByMonth, allTradesByMonth } = dailyView(data);
-  const selectedMonth = months.includes(state.dailyMonth) ? state.dailyMonth : months.at(-1) || "";
-  const monthRows = statsByMonth.get(selectedMonth) || [];
+  const view = dailyView(data);
+  const { isFiltered, statsByMonth, tradesByMonth, allTradesByMonth } = view;
+  const narrowMonths = isFiltered && tradesByMonth.size && state.dailyScope === "month" && !state.dailyParents.length;
+  const months = narrowMonths ? [...tradesByMonth.keys()].sort() : view.months;
+  const currency = view.currency || data.baseCurrency || "USD";
+  const preferredMonth = state.dailyMonth || view.currentMonth;
+  const selectedMonth = months.includes(preferredMonth) ? preferredMonth : months.at(-1);
+  const years = [...new Set(view.months.map(month => month.slice(0, 4)))].reverse();
+  const year = years.includes(state.dailyYear) ? state.dailyYear : selectedMonth.slice(0, 4);
   const monthlyTradeRows = tradesByMonth.get(selectedMonth) || [];
   const selection = state.dailySelectedDate;
   const selectedDate = selectedMonth && selection.startsWith(selectedMonth + "-") &&
-    (inReportPeriod(selection, data.reportScope) || monthlyTradeRows.some(row => row.date === selection)) ? selection : "";
+    (inReportPeriod(selection, view.coverage) || monthlyTradeRows.some(row => row.date === selection)) ? selection : "";
+  const showBack = state.dailyScope === "month" ? Boolean(selectedDate) : state.dailyParents.length > 0;
+  const toolbar = renderReviewToolbar(data, view, months, selectedMonth, years, year, showBack);
+  if (state.dailyScope !== "month") return renderPeriodReview(data, view, year, currency, toolbar);
+  const monthRows = statsByMonth.get(selectedMonth) || [];
   const tradeRows = selectedDate ? monthlyTradeRows.filter((row) => row.date === selectedDate) : monthlyTradeRows;
   const sortedTradeRows = sortDailyTradeRows(tradeRows);
   const unfilteredMonthlyTradeRows = allTradesByMonth.get(selectedMonth) || [];
@@ -1253,34 +1375,26 @@ function renderDailyStats(data) {
     ? "当天没有交易记录。"
     : isFiltered ? "当前搜索没有匹配的交易记录。" : "当前月份没有交易记录。";
   const totalTrades = monthRows.reduce((sum, row) => sum + row.tradeCount, 0);
-  const totalGross = monthRows.reduce((sum, row) => sum + row.grossTradeValue, 0);
-  const totalRealized = monthRows.every(row => Number.isFinite(row.realizedPL))
-    ? monthRows.reduce((sum, row) => sum + row.realizedPL, 0) : null;
+  const totalGross = sumReported(monthlyTradeRows, "grossValue");
+  const totalRealized = view.coveredMonths.has(selectedMonth) ? sumReported(monthRows, "realizedPL") : null;
   const daysInMonth = selectedMonth ? getDaysInMonth(selectedMonth) : 0;
   const averageTrades = daysInMonth ? totalTrades / daysInMonth : 0;
 
   return `
     <div class="content-stack">
       ${renderPageHeading(t("dailyHeading"), data, t("dailySubtitle"))}
-      <div class="daily-toolbar">
-        <label class="month-select-label">
-          <span>月份</span>
-          <select class="month-select" id="dailyMonthSelect" ${months.length ? "" : "disabled"}>
-            ${months.map((month) => `<option value="${escapeAttribute(month)}"${month === selectedMonth ? " selected" : ""}>${escapeHtml(formatMonthLabel(month))}</option>`).join("")}
-          </select>
-        </label>
-      </div>
+      ${toolbar}
       <div class="grid-12">
         <section class="dashboard-card span-7 daily-calendar-card">
           <div class="card-header"><h2>盈亏日历</h2><span class="pill">${escapeHtml(selectedMonth || "-")}</span></div>
-          ${renderProfitCalendar(monthRows, selectedMonth, currency, selectedDate, data.reportScope)}
+          ${renderProfitCalendar(monthRows, selectedMonth, currency, selectedDate, view.coverage)}
         </section>
         <section class="dashboard-card span-5 daily-trades-card">
           <div class="card-header"><h2>每日交易统计</h2><span class="pill">${formatNumber(totalTrades)} trades</span></div>
           ${renderDailyTradeChart(monthRows, selectedMonth)}
           <div class="daily-stat-grid">
             ${renderDailyStat("总交易笔数", formatNumber(totalTrades))}
-            ${renderDailyStat("总成交额", formatMoney(totalGross, currency))}
+            ${renderDailyStat("总成交额", totalGross === null ? "—" : formatMoney(totalGross, currency))}
             ${renderDailyStat("日均交易", formatNumber(averageTrades, 1))}
             ${renderDailyStat("已实现盈亏", totalRealized === null ? "—" : signedMoney(totalRealized, currency), totalRealized)}
           </div>
@@ -1605,7 +1719,8 @@ function renderPositionAssetPie(positions, currency, cash = 0, options = {}) {
 }
 
 function inReportPeriod(date, scope) {
-  return Boolean(scope?.start && scope.end && date >= scope.start && date <= scope.end);
+  const ranges = Array.isArray(scope) ? scope : [scope];
+  return ranges.some(range => range?.start && date >= range.start && date <= range.end);
 }
 
 function renderProfitCalendar(rows, month, currency, selectedDate, scope) {
@@ -1751,8 +1866,8 @@ function renderDailyTradeTable(rows, currency, emptyMessage = "当前月份没�
     escapeHtml(row.assetCategory || "-"),
     formatNumber(Math.abs(row.quantity), 4),
     formatMoney(row.price, row.currency || currency),
-    formatMoney(row.grossValue, currency),
-    formatMoney(row.commission, currency),
+    Number.isFinite(row.grossValue) ? formatMoney(row.grossValue, currency) : "—",
+    Number.isFinite(row.reportedFee) && row.feeCurrency ? formatMoney(row.reportedFee, row.feeCurrency) : "—",
     `<span class="${valueClass(row.realizedPL)}">${Number.isFinite(row.realizedPL) ? signedMoney(row.realizedPL, currency) : "—"}</span>`
   ]);
   return renderSimpleTable(["成交时间", "股票代码", "方向", "资产", "数量", "成交价", "成交金额", "佣金", "已实现盈亏"], tableRows, [false, false, false, false, true, true, true, true, true], true, "daily-trade-table");
@@ -2564,8 +2679,48 @@ function bindDashboardEvents() {
     });
   });
 
+  document.querySelector("#reviewScope")?.addEventListener("change", event => {
+    const menu = event.currentTarget;
+    state.dailyScope = menu.value;
+    state.dailyYear = menu.dataset.year;
+    state.dailyMonth = menu.dataset.month;
+    state.dailyParents = [];
+    state.dailySelectedDate = "";
+    renderDashboard();
+  });
+  document.querySelector("#reviewYear")?.addEventListener("change", event => {
+    state.dailyYear = event.currentTarget.value;
+    state.dailyParents = [];
+    renderDashboard();
+  });
+  document.querySelector("#reviewCurrency")?.addEventListener("change", event => {
+    state.dailyCurrency = event.currentTarget.value;
+    renderDashboard();
+  });
+  document.querySelectorAll("[data-review-period]").forEach(button => button.addEventListener("click", () => {
+    const period = button.dataset.reviewPeriod;
+    state.dailyParents.push({ scope: state.dailyScope, year: state.dailyYear, month: state.dailyMonth });
+    state.dailyYear = period.slice(0, 4);
+    state.dailyScope = period.length === 4 ? "year" : "month";
+    if (state.dailyScope === "month") state.dailyMonth = period;
+    state.dailySelectedDate = "";
+    renderDashboard();
+  }));
+  document.querySelector("#reviewBack")?.addEventListener("click", () => {
+    if (state.dailySelectedDate) {
+      state.dailySelectedDate = "";
+    } else {
+      const parent = state.dailyParents.pop();
+      if (!parent) return;
+      state.dailyScope = parent.scope;
+      state.dailyMonth = parent.month;
+      state.dailyYear = parent.year;
+    }
+    renderDashboard();
+  });
   document.querySelector("#dailyMonthSelect")?.addEventListener("change", (event) => {
     state.dailyMonth = event.currentTarget.value || "";
+    state.dailyParents = [];
     state.dailySelectedDate = "";
     renderDashboard();
   });
@@ -3531,7 +3686,7 @@ async function readFile(file, { persist = false } = {}) {
 
 async function loadSample() {
   try {
-    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.2.25");
+    const response = await fetch("./samples/ibkr-sample-demo.csv?v=2.3.0");
     if (!response.ok) throw new Error("sample unavailable");
     parseText(await response.text(), "ibkr-sample-demo.csv");
   } catch (error) {
@@ -3583,6 +3738,13 @@ function parseText(text, sourceName, options = {}) {
     if (options.validateReplacement) {
       const issue = reportReplacementIssue(state.data, parsed);
       if (issue) throw new Error(issue);
+    }
+    if (!options.preserveView) {
+      state.dailyScope = "month";
+      state.dailyYear = "";
+      state.dailyMonth = "";
+      state.dailyCurrency = "";
+      state.dailyParents = [];
     }
     state.data = parsed;
     state.reportText = cleanText;

@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.3.0
+
+- Switch between Month, Year and All time in Daily Stats. Select a year, month or weekday to inspect the underlying activity, then use Back to retrace the selection.
+- Review realized P&L and symbol contributions for the selected period and currency. See commissions by fee currency, with credits offsetting costs.
+- See the dates covered by the imported statements and, when reported for a single account, its opening date.
+
 ## v2.2.25
 
 The daily P&L calendar now follows the trading dates in the IBKR Flex report.
