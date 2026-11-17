@@ -59,6 +59,14 @@ assert.match(annual, /2026-11 · —/); // An unreported realized amount invalid
 assert.doesNotMatch(annual, /2025-12-29|Account opened/);
 console.log('Annual and all-time scopes, separate coverage, selected currency and missing P&L passed.');
 
+// After a day drill-down, the full month is the resting view even when it was opened from a year.
+vm.runInContext('state.dailyParents = [{scope: "all"}]', context);
+assert.match(context.renderDailyStats(report), /id="reviewBack"/);
+vm.runInContext('state.dailyScope = "month"; state.dailyMonth = "2026-11"; state.dailySelectedDate = "2026-11-11"', context);
+assert.match(context.renderDailyStats(report), /id="reviewBack"/);
+vm.runInContext('state.dailySelectedDate = ""', context);
+assert.doesNotMatch(context.renderDailyStats(report), /id="reviewBack"/);
+
 // Report total uses Studio's report-wide FX convention at every scope, including when a trade also reports a rate.
 const withBothRates = parseIbkrReport(`BOF,TEST,Test,1,20261101,20261116
 BOS,ACCT,Account Information

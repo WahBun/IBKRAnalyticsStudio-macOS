@@ -1244,7 +1244,7 @@ function dailyView(data) {
   return result;
 }
 
-function renderReviewToolbar(data, view, months, month, years, year) {
+function renderReviewToolbar(data, view, months, month, years, year, showBack) {
   const scope = state.dailyScope;
   const monthForYear = scope === "month" || month.startsWith(year) ? month : view.months.filter(key => key.startsWith(year)).at(-1);
   const picker = (id, name, choices, selected, attributes = "") => {
@@ -1260,7 +1260,7 @@ function renderReviewToolbar(data, view, months, month, years, year) {
   const scopeDates = `data-month="${monthForYear || month}" data-year="${scope === "month" ? month.slice(0, 4) : year}"`;
   const currencyOptions = [["", `Report total (${data.baseCurrency})`], ...view.currencies.map(key => [key, key])];
   return `<div class="daily-toolbar">
-    ${state.dailyParents.length || state.dailySelectedDate ? `<button class="icon-button review-back" id="reviewBack" type="button" aria-label="Back" title="Back">${icon("back")}</button>` : ""}
+    ${showBack ? `<button class="icon-button review-back" id="reviewBack" type="button" aria-label="Back" title="Back">${icon("back")}</button>` : ""}
     ${view.currencies.length > 1 ? picker("reviewCurrency", "P&amp;L currency", currencyOptions, view.currency) : ""}
     ${picker("reviewScope", "Review period", scopeOptions, scope, scopeDates)}
     ${scope === "month" ? picker("dailyMonthSelect", "Selected month", months.map(key => [key, formatMonthLabel(key)]), month) : ""}
@@ -1356,13 +1356,14 @@ function renderDailyStats(data) {
   const selectedMonth = months.includes(preferredMonth) ? preferredMonth : months.at(-1);
   const years = [...new Set(view.months.map(month => month.slice(0, 4)))].reverse();
   const year = years.includes(state.dailyYear) ? state.dailyYear : selectedMonth.slice(0, 4);
-  const toolbar = renderReviewToolbar(data, view, months, selectedMonth, years, year);
-  if (state.dailyScope !== "month") return renderPeriodReview(data, view, year, currency, toolbar);
-  const monthRows = statsByMonth.get(selectedMonth) || [];
   const monthlyTradeRows = tradesByMonth.get(selectedMonth) || [];
   const selection = state.dailySelectedDate;
   const selectedDate = selectedMonth && selection.startsWith(selectedMonth + "-") &&
     (inReportPeriod(selection, view.coverage) || monthlyTradeRows.some(row => row.date === selection)) ? selection : "";
+  const showBack = state.dailyScope === "month" ? Boolean(selectedDate) : state.dailyParents.length > 0;
+  const toolbar = renderReviewToolbar(data, view, months, selectedMonth, years, year, showBack);
+  if (state.dailyScope !== "month") return renderPeriodReview(data, view, year, currency, toolbar);
+  const monthRows = statsByMonth.get(selectedMonth) || [];
   const tradeRows = selectedDate ? monthlyTradeRows.filter((row) => row.date === selectedDate) : monthlyTradeRows;
   const sortedTradeRows = sortDailyTradeRows(tradeRows);
   const unfilteredMonthlyTradeRows = allTradesByMonth.get(selectedMonth) || [];
