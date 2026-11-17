@@ -1500,9 +1500,19 @@ html[data-theme="dark"] .refresh-action-button:hover {
 .daily-toolbar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.review-back {
+  width: 26px;
+  height: 24px;
+}
+
+.review-back svg {
+  width: 17px;
+  height: 17px;
 }
 
 .review-picker {

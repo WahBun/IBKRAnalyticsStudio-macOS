@@ -58,3 +58,22 @@ assert.equal((annual.match(/data-review-period=/g) || []).length, 1);
 assert.match(annual, /2026-11 · —/); // An unreported realized amount invalidates the bucket.
 assert.doesNotMatch(annual, /2025-12-29|Account opened/);
 console.log('Annual and all-time scopes, separate coverage, selected currency and missing P&L passed.');
+
+// Report total uses Studio's report-wide FX convention at every scope, including when a trade also reports a rate.
+const withBothRates = parseIbkrReport(`BOF,TEST,Test,1,20261101,20261116
+BOS,ACCT,Account Information
+HEADER,ACCT,ClientAccountID,CurrencyPrimary
+DATA,ACCT,TEST,USD
+BOS,MTMP,Mark-to-Market Performance Summary
+HEADER,MTMP,AssetClass,Symbol,ClosePrice,ReportDate
+DATA,MTMP,CASH,CAD,0.75,20261116
+BOS,TRNT,Trades
+HEADER,TRNT,ClientAccountID,Symbol,LevelOfDetail,AssetClass,CurrencyPrimary,TradeDate,Quantity,Proceeds,FifoPnlRealized,FXRateToBase
+DATA,TRNT,TEST,ABC,ORDER,STK,CAD,20261110,1,40,20,0.8
+EOF`);
+const cadTrade = withBothRates.tradeDetails[0];
+assert.equal(withBothRates.exchangeRates.CAD, 0.75);
+vm.runInContext('state.dailyCurrency = ""', context);
+const totalTrade = context.dailyView(withBothRates).tradesByMonth.get('2026-11')[0];
+assert.equal(totalTrade.grossValue, cadTrade.grossValue);
+assert.equal(totalTrade.realizedPL, cadTrade.realizedPL);

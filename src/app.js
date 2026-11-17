@@ -373,6 +373,7 @@ const icons = {
   close: '<path d="M18 6 6 18" /><path d="m6 6 12 12" />',
   eye: '<path d="M2.1 12s3.7-6 9.9-6 9.9 6 9.9 6-3.7 6-9.9 6-9.9-6-9.9-6Z" /><circle cx="12" cy="12" r="3" />',
   eyeOff: '<path d="M3 3l18 18" /><path d="M10.6 10.6A3 3 0 0 0 12 15a3 3 0 0 0 2.1-.9" /><path d="M9.9 5.2A10.8 10.8 0 0 1 12 5c6.2 0 9.9 7 9.9 7a17.6 17.6 0 0 1-2.1 2.8" /><path d="M6.6 6.7C3.7 8.6 2.1 12 2.1 12s3.7 7 9.9 7a9.7 9.7 0 0 0 4.2-.9" />',
+  back: '<path d="m9 5-6 6 6 6" /><path d="M3 11h9a9 9 0 0 1 9 9" />',
   arrowUp: '<path d="M12 19V5" /><path d="m6 11 6-6 6 6" />',
   arrowDown: '<path d="M12 5v14" /><path d="m6 13 6 6 6-6" />'
 };
@@ -1259,7 +1260,7 @@ function renderReviewToolbar(data, view, months, month, years, year) {
   const scopeDates = `data-month="${monthForYear || month}" data-year="${scope === "month" ? month.slice(0, 4) : year}"`;
   const currencyOptions = [["", `Report total (${data.baseCurrency})`], ...view.currencies.map(key => [key, key])];
   return `<div class="daily-toolbar">
-    ${state.dailyParents.length || state.dailySelectedDate ? '<button class="pill-button" id="reviewBack" type="button">Back</button>' : ""}
+    ${state.dailyParents.length || state.dailySelectedDate ? `<button class="icon-button review-back" id="reviewBack" type="button" aria-label="Back" title="Back">${icon("back")}</button>` : ""}
     ${view.currencies.length > 1 ? picker("reviewCurrency", "P&amp;L currency", currencyOptions, view.currency) : ""}
     ${picker("reviewScope", "Review period", scopeOptions, scope, scopeDates)}
     ${scope === "month" ? picker("dailyMonthSelect", "Selected month", months.map(key => [key, formatMonthLabel(key)]), month) : ""}

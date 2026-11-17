@@ -1419,7 +1419,7 @@ function parseTradeDetails(rows = [], exchangeRates) {
         reportedFee: reportNumber(readCommission(row)),
         localRealized: dailyRealizedPL(row, 1),
         localGross: Math.abs(toNumber(row.Proceeds)),
-        reviewRate: reportNumber(row.FXRateToBase) || exchangeRates[currency] || null,
+        reviewRate: exchangeRates[currency] || reportNumber(row.FXRateToBase) || null,
         realizedPL,
         mtmPL,
         code: row.Code || ""
