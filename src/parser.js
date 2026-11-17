@@ -67,6 +67,7 @@ export function parseIbkrReport(csvText) {
 
   return {
     reportScope,
+    reviewCoverage: reviewCoverage(sections),
     accountInfo,
     baseCurrency: accountInfo.baseCurrency,
     exchangeRates,
@@ -159,7 +160,7 @@ function collectFlexSections(rows) {
   const headersByCode = {};
   const namesByCode = {};
   const sections = {};
-  let statementPeriod = "";
+  const statementPeriods = [];
 
   for (const columns of rows) {
     const rowType = cleanFlexCell(columns[0]);
@@ -168,7 +169,7 @@ function collectFlexSections(rows) {
     if (rowType === "BOF") {
       const start = displayFlexDate(columns[4]);
       const end = displayFlexDate(columns[5]);
-      statementPeriod = start && end ? `${start} - ${end}` : "";
+      if (start && end) statementPeriods.push(`${start} - ${end}`);
       continue;
     }
 
@@ -199,8 +200,8 @@ function collectFlexSections(rows) {
     ).filter(account => account && account !== '-'))]
   });
 
-  if (statementPeriod) {
-    sections.Statement = [{ "Field Name": "Period", "Field Value": statementPeriod }];
+  if (statementPeriods.length) {
+    sections.Statement = statementPeriods.map(period => ({ "Field Name": "Period", "Field Value": period }));
   }
 
   if (rawByCode.ACCT?.length) {
@@ -382,6 +383,7 @@ function flexAccountRows(row) {
     ["Account", row.ClientAccountID],
     ["Name", row.Name],
     ["Base Currency", row.CurrencyPrimary],
+    ["Date Opened", row.DateOpened],
     ["Account Type", row.AccountType],
     ["Customer Type", row.CustomerType]
   ].map(([name, value]) => ({ "Field Name": name, "Field Value": value || "" }));
@@ -575,7 +577,10 @@ function flexTradeRow(row) {
     Quantity: row.Quantity || "0",
     "T. Price": row.TradePrice || "0",
     Proceeds: row.Proceeds || row.TradeMoney || "0",
-    "Comm/Fee": row.IBCommission || "0",
+    "Comm/Fee": row.IBCommission ?? "",
+    FeeCurrency: row.IBCommissionCurrency || "",
+    UnderlyingSymbol: row.UnderlyingSymbol || "",
+    FXRateToBase: row.FXRateToBase || "",
     "Realized P/L": row.FifoPnlRealized || "",
     "MTM P/L": row.MtmPnl || "0",
     Code: row["Notes/Codes"] || row.Code || ""
@@ -817,6 +822,28 @@ export function parseCsvLine(line) {
   return cells;
 }
 
+// A statement may contain multiple reported intervals. Keep gaps visible in the review.
+function reviewCoverage(sections) {
+  const periods = [...(sections.Statement || []), ...(sections["Account Information"] || [])]
+    .filter(row => row["Field Name"] === "Period")
+    .map(row => row["Field Value"].split(" - ").map(parseDate))
+    .filter(([start, end]) => start && end && start <= end)
+    .sort(([a], [b]) => a - b);
+  const ranges = [];
+  for (const [first, last] of periods) {
+    const start = dateKey(first), end = dateKey(last);
+    const previous = ranges.at(-1);
+    const priorDay = new Date(first);
+    priorDay.setDate(priorDay.getDate() - 1);
+    if (previous && previous.end >= dateKey(priorDay)) {
+      if (end > previous.end) previous.end = end;
+    } else {
+      ranges.push({ start, end });
+    }
+  }
+  return ranges;
+}
+
 function parseAccountInfo(sections) {
   const infoRows = sections["Account Information"] || [];
   const statementRows = sections.Statement || [];
@@ -829,6 +856,7 @@ function parseAccountInfo(sections) {
 
   return {
     account: infoMap.get("Account") || "",
+    opened: displayFlexDate(infoMap.get("Date Opened") || infoMap.get("Account Opened")),
     name: infoMap.get("Name") || "",
     baseCurrency: infoMap.get("Base Currency") || "USD",
     period: statementMap.get("Period") || infoMap.get("Period") || ""
@@ -1377,7 +1405,8 @@ function parseTradeDetails(rows = [], exchangeRates) {
         fillDate: fillTime ? dateKey(fillTime) : "",
         month: date ? monthKey(date) : "",
         symbol: row.Symbol || "",
-        baseSymbol: parseOptionSymbol(row.Symbol || "").baseSymbol || row.Symbol || "",
+        baseSymbol: row.UnderlyingSymbol || (row["Asset Category"] === OPTION_ASSET
+          ? row.Symbol?.match(/^(.+?)\s*\d{6}[CP]\d{8}$/)?.[1]?.trim() : "") || parseOptionSymbol(row.Symbol || "").baseSymbol,
         assetCategory: row["Asset Category"] || "",
         currency,
         side: quantity < 0 ? "Sell" : "Buy",
@@ -1386,6 +1415,11 @@ function parseTradeDetails(rows = [], exchangeRates) {
         proceeds,
         grossValue: Math.abs(proceeds),
         commission,
+        feeCurrency: row.FeeCurrency ?? Object.keys(row).find(key => /^Comm in [A-Z]{3}$/i.test(key))?.slice(-3).toUpperCase() ?? currency,
+        reportedFee: reportNumber(readCommission(row)),
+        localRealized: dailyRealizedPL(row, 1),
+        localGross: Math.abs(toNumber(row.Proceeds)),
+        reviewRate: reportNumber(row.FXRateToBase) || exchangeRates[currency] || null,
         realizedPL,
         mtmPL,
         code: row.Code || ""
@@ -1620,8 +1654,7 @@ function readCommission(row) {
   return (
     row["Comm/Fee"] ??
     row["Commission"] ??
-    Object.entries(row).find(([key]) => key.toLowerCase().startsWith("comm"))?.[1] ??
-    "0"
+    Object.entries(row).find(([key]) => key.toLowerCase().startsWith("comm"))?.[1]
   );
 }
 

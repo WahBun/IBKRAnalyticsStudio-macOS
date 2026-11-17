@@ -1486,28 +1486,69 @@ html[data-theme="dark"] .refresh-action-button:hover {
   text-transform: none;
 }
 
+.review-period-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.review-period-grid button:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
 .daily-toolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.month-select-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
+.review-picker {
+  position: relative;
+  display: inline-grid;
+  max-width: 100%;
   font-size: 12px;
   font-weight: 800;
+  line-height: 18px;
 }
 
-.month-select {
-  min-height: 34px;
-  padding: 6px 34px 6px 10px;
+.review-picker-size {
+  visibility: hidden;
+  white-space: nowrap;
+  padding: 3px 20px 3px 8px;
+}
+
+.review-picker select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  appearance: none;
+  padding: 0 17px 0 5px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   color: var(--ink);
   background: var(--surface);
-  font-weight: 800;
+  font: inherit;
+  text-align: center;
+  text-align-last: center;
+  cursor: pointer;
+}
+
+.review-picker::after {
+  content: "";
+  position: absolute;
+  top: calc(50% - 4px);
+  right: 7px;
+  width: 5px;
+  height: 5px;
+  border: solid var(--muted);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+  pointer-events: none;
 }
 
 .daily-calendar-card,
@@ -3351,10 +3392,6 @@ html[data-theme="dark"] .pie-center-image .pie-center-image-dark {
 
   .asset-pie {
     margin: 0 auto;
-  }
-
-  .daily-toolbar {
-    justify-content: flex-start;
   }
 
   .table-header {

@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import { easternDay } from '../src/refreshSchedule.js';
 import { execFileSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 
 function load(source) {
-  const context = { Intl, URLSearchParams, localStorage: { getItem: () => null },
+  const context = { Intl, URLSearchParams, easternDay, localStorage: { getItem: () => null },
     document: { querySelector: () => null, documentElement: { lang: 'en' } } };
   vm.createContext(context);
   vm.runInContext(source.replace(/^import .*;$/gm, '').replace(
@@ -19,7 +20,7 @@ const tradeDetails = Array.from({ length: 12000 }, (_, i) => ({
   date: `2026-${String(i % 12 + 1).padStart(2, '0')}-15`,
   month: `2026-${String(i % 12 + 1).padStart(2, '0')}`,
   dateTime: `2026-${String(i % 12 + 1).padStart(2, '0')}-15T12:00:00`,
-  side: 'Buy', currency: 'USD', grossValue: 100, commission: -1, realizedPL: i % 10
+  side: 'Buy', currency: 'USD', grossValue: 100, commission: -1, realizedPL: i % 10, localRealized: i % 10, reviewRate: 1, localGross: 100, reportedFee: -1, feeCurrency: 'USD'
 }));
 const data = { tradeDetails, dailyTradeStats: current.summarizeDailyTradeRows(tradeDetails),
   accountInfo: {}, tradeSummary: {}, baseCurrency: 'USD' };
@@ -27,7 +28,9 @@ for (const query of ['', 'TSLL', '2026-02', 'no-match']) {
   for (const context of [current, previous]) vm.runInContext(`state.search = ${JSON.stringify(query)}`, context);
   for (const month of ['2026-02', '2026-12']) {
     for (const context of [current, previous]) vm.runInContext(`state.dailyMonth = '${month}'; state.dailySelectedDate = '${month}-15'`, context);
-    assert.equal(current.renderDailyStats(data), previous.renderDailyStats(data));
+    // The new period picker intentionally replaces the old toolbar.
+    const cards = context => context.renderDailyStats(data).split('<div class="grid-12">').at(-1);
+    assert.equal(cards(current), cards(previous));
   }
 }
 vm.runInContext("state.search = 'TSLL'", current);

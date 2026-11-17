@@ -24,3 +24,37 @@ const leap = context.renderProfitCalendar([], '2028-02', 'USD', '', {});
 assert.match(leap, /class="profit-calendar">\s*<div class="calendar-cell is-empty"[^>]*><\/div>\s*<div class="calendar-cell"/);
 assert.match(leap, /class="calendar-day">29</);
 console.log('Weekday grid, report coverage, inactive and breakeven days, unknown values and leap month passed.');
+
+const { parseIbkrReport } = await import('../src/parser.js');
+const { easternDay } = await import('../src/refreshSchedule.js');
+context.easternDay = easternDay;
+const report = parseIbkrReport(`BOF,TEST,Test,1,20251229,20251231
+BOF,TEST,Test,1,20261101,20261116
+BOS,ACCT,Account Information
+HEADER,ACCT,ClientAccountID,DateOpened,CurrencyPrimary
+DATA,ACCT,TEST,20240115,USD
+BOS,TRNT,Trades
+HEADER,TRNT,ClientAccountID,Symbol,UnderlyingSymbol,LevelOfDetail,AssetClass,CurrencyPrimary,TradeDate,Quantity,IBCommission,IBCommissionCurrency,FifoPnlRealized,FXRateToBase
+DATA,TRNT,TEST,ABC,,ORDER,STK,USD,20251230,1,-1,USD,12,1
+DATA,TRNT,TEST,ABC261120C00011000,ABC,ORDER,OPT,USD,20261110,1,-2,USD,-5,1
+DATA,TRNT,TEST,XYZ,,ORDER,STK,CAD,20261111,1,0.25,USD,8,0.75
+DATA,TRNT,TEST,NO-PNL,,ORDER,STK,CAD,20261112,1,-0.50,CAD,,0.75
+EOF`);
+assert.deepEqual(report.reviewCoverage, [
+  { start: '2025-12-29', end: '2025-12-31' },
+  { start: '2026-11-01', end: '2026-11-16' }
+]);
+assert.equal(report.accountInfo.opened, '2024-01-15');
+vm.runInContext('state.dailyScope = "all"; state.dailyCurrency = "USD"', context);
+const all = context.renderDailyStats(report);
+assert.match(all, /data-review-period="2025"/);
+assert.match(all, /data-review-period="2026"/);
+assert.match(all, /Account opened 2024-01-15/);
+assert.match(all, /\+[^<]*7\.00/);
+assert.match(all, /2\.75/);  // Includes the commission credit on the CAD trade.
+vm.runInContext('state.dailyScope = "year"; state.dailyYear = "2026"; state.dailyCurrency = "CAD"', context);
+const annual = context.renderDailyStats(report);
+assert.equal((annual.match(/data-review-period=/g) || []).length, 1);
+assert.match(annual, /2026-11 · —/); // An unreported realized amount invalidates the bucket.
+assert.doesNotMatch(annual, /2025-12-29|Account opened/);
+console.log('Annual and all-time scopes, separate coverage, selected currency and missing P&L passed.');
